@@ -94,6 +94,10 @@ async def upload_fatura(arquivo: UploadFile = File(...), banco: str = Form(...),
             content={"erro": f"PDF corrompido ou ilegível: {e}"},
         )
 
+    # Aplicar categorização determinística
+    from categorizer import categorizar
+    fatura = categorizar(fatura)
+
     payload = fatura_para_dict(fatura)
     payload["id"] = fatura_id
 

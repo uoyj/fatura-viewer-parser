@@ -35,6 +35,7 @@ def main() -> int:
     parse_parser.add_argument("pdf_path", type=str, help="Caminho do PDF da fatura")
     parse_parser.add_argument("--banco", type=str, required=True, help="Nome do banco (ex: sofisa)")
     parse_parser.add_argument("--versao", type=str, default="latest", help="Versão do layout (default: latest)")
+    parse_parser.add_argument("--categorizar", action="store_true", help="Aplicar categorização por palavra-chave")
 
     # Subcomando: parsers
     subparsers.add_parser("parsers", help="Lista todos os parsers registrados")
@@ -76,7 +77,12 @@ def _cmd_parse(args: argparse.Namespace) -> int:
         # 3. Parser parseia
         fatura = parse_fn(extractor_output)
 
-        # 4. Serializar para JSON
+        # 4. Categorizar (opcional)
+        if args.categorizar:
+            from categorizer import categorizar
+            fatura = categorizar(fatura)
+
+        # 5. Serializar para JSON
         output = fatura_para_dict(fatura)
         print(json.dumps(output, ensure_ascii=False, indent=2))
         return 0
