@@ -20,6 +20,9 @@ htmlcov/
 # PDF de exemplo (grande, binário — mantenha local, clone via script)
 in/
 
+# Dados gerados em runtime (uploads, faturas persistidas)
+data/
+
 # IDE
 .vscode/
 .idea/
@@ -33,3 +36,4 @@ Thumbs.db
 
 # Logs
 *.log
+data/

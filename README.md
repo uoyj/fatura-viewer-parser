@@ -8,12 +8,14 @@ Extrai transações de faturas de cartão de crédito a partir de PDFs e devolve
 
 ```
 fatura-viewer/
-├── extractors/        # Extração bruta de PDF (texto, posições, tabelas). Genérico, sem lógica de banco.
-├── parsers/           # Um módulo por modelo banco+versão (ex: sofisa_2026_09.py)
-├── registry.py        # Registry (banco, versão) → função parser + get_parser()
-├── schemas.py         # Dataclasses: Transacao, Cartao, Fatura
-├── cli.py             # CLI: roda parser sobre um PDF e imprime JSON
-└── tests/fixtures/    # PDFs de exemplo + JSON de expected output
+├── api.py               # FastAPI: POST /faturas, GET /faturas, GET /parsers
+├── extractors/          # Extração bruta de PDF (texto, posições, tabelas). Genérico, sem lógica de banco.
+├── parsers/             # Um módulo por modelo banco+versão (ex: sofisa_2026_09.py)
+├── registry.py          # Registry (banco, versão) → função parser + get_parser()
+├── schemas.py           # Dataclasses: Transacao, Fatura (lista plana — sem Cartao)
+├── cli.py               # CLI: roda parser sobre um PDF e imprime JSON
+├── pyproject.toml       # Entry point: fatura-viewer = cli:main
+└── tests/               # Testes pytest + fixtures
 ```
 
 **Regra de ouro:** o parser **nunca** lê o PDF diretamente. Só recebe o output do extractor.
@@ -30,14 +32,46 @@ uv pip install -e ".[dev]"
 
 ## Uso
 
+### API HTTP (FastAPI — uso interno, sem auth)
+
+```bash
+# Iniciar servidor
+uvicorn api:app --reload
+# → http://127.0.0.1:8000
+
+# Documentação automática: http://127.0.0.1:8000/docs
+```
+
+#### Endpoints
+
+| Método | Endpoint | Descrição |
+|--------|----------|-----------|
+| `POST` | `/faturas` | Upload de PDF (multipart: `arquivo`, `banco`, `versao` opcional) |
+| `GET` | `/faturas` | Lista resumida: `{id, banco, modelo, fechamento, total_a_pagar}` |
+| `GET` | `/faturas/{fatura_id}` | Retorna payload completo da fatura |
+| `GET` | `/parsers` | Lista parsers registrados: `{banco: [versoes]}` |
+
+**POST /faturas** — multipart/form-data:
+- `arquivo` (PDF) — **obrigatório**
+- `banco` (ex: `sofisa`) — **obrigatório**
+- `versao` (ex: `2026-09`) — opcional, default `latest`
+
+```bash
+# Exemplo: upload de fatura
+curl -F "arquivo=@in/Fatura.pdf" -F "banco=sofisa" http://127.0.0.1:8000/faturas
+```
+
+Respostas:
+- **200** — JSON da fatura + campo `id`
+- **422** — `{"erro": "..."}` para: extensão ≠ `.pdf`, parser não encontrado, `ParserError`, PDF corrompido
+
+Dados são persistidos em `data/faturas.jsonl` (uma linha JSON por fatura) e uploads em `data/uploads/<uuid>.pdf`.
+
 ### CLI — rodar parser sobre um PDF
 
 ```bash
-# Usar auto-detecção de banco
-python cli.py parse faturas/sofisa_setembro_2026.pdf
-
 # Forçar banco e versão
-python cli.py parse faturas/exemplo.pdf --banco sofisa --versao 2026-09
+python cli.py parse in/Fatura.pdf --banco sofisa --versao 2026-09
 
 # Listar parsers disponíveis
 python cli.py parsers
@@ -50,19 +84,29 @@ Output: JSON com a estrutura `Fatura`:
   "banco": "sofisa",
   "modelo": "2026-09",
   "fechamento": "2026-09-15",
-  "vencimento": "2026-09-25",
-  "total_a_pagar": "3250.00",
-  "pagamento_minimo": "975.00",
+  "vencimento": "2026-09-20",
+  "total_a_pagar": "6727.55",
+  "pagamento_minimo": "672.76",
   "transacoes": [
     {
-      "data": "2026-09-01",
-      "descricao": "SUPERMERCADO XYZ",
-      "valor": "150.00",
+      "data": "2025-11-30",
+      "descricao": "EC *STERILAIR",
+      "valor": "74.80",
       "parcela_atual": 1,
-      "parcela_total": 3,
+      "parcela_total": 10,
       "moeda": "BRL",
       "categoria": null,
-      "cartao": "4563**.*******.9219"
+      "cartao": "4563**.******.9219"
+    },
+    {
+      "data": "2026-08-20",
+      "descricao": "Compra a Vista WELLHUB MARCOS RICIOLI",
+      "valor": "82.40",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9219"
     }
   ]
 }
@@ -86,11 +130,16 @@ for line in lines:
 
 ## Convenções
 
--  **JSON serializável** — sempre via `json.dumps`
--  **Datas** — ISO (`YYYY-MM-DD`)
--  **Valores monetários** — `Decimal`, serializado como string (`"150.00"`) — **nunca** `float`
--  **Transacao.valor** — positivo = débito (compra), negativo = crédito (estorno/pagamento)
--  **categoria** — `null` por enquanto (sem categorização automática)
+- **JSON serializável** — sempre via `json.dumps`
+- **Datas** — ISO (`YYYY-MM-DD`)
+- **Valores monetários** — `Decimal`, serializado como string (`"150.00"`) — **nunca** `float`
+- **Transacao.valor** — positivo = débito (compra), negativo = crédito (estorno/pagamento)
+- **Transacao.cartao** — número mascarado da fatura (ex: `4563**.******.9219`), `""` se desconhecido
+- **categoria** — `null` por enquanto (sem categorização automática)
+
+### Modelo de dados (simplificado — REV 3)
+
+NÃO há mais `Cartao` como dataclass separada. O output é uma **lista plana de `Transacao`**, cada uma com o campo `cartao` (string com o número mascarado). Isso reflete que a fatura é consolidada — múltiplos cartões aparecem como tags nas transações, não como seções.
 
 ## Adicionar um novo parser
 
@@ -99,7 +148,7 @@ for line in lines:
 
 ```python
 from registry import registrar
-from schemas import Fatura, Cartao, Transacao
+from schemas import Fatura, Transacao
 from extractors.pdf_extractor import extract_text
 
 @registrar("inter", "2025-03")
@@ -113,11 +162,11 @@ def parse_inter_2025_03(extractor_output: dict) -> Fatura:
         vencimento=date(2026, 3, 25),
         total_a_pagar=Decimal("3250.00"),
         pagamento_minimo=Decimal("975.00"),
-        cartoes=[Cartao(numero_mascarado="1234 **** **** 5678", titular="JOÃO", transacoes=[...])],
+        transacoes=[...],
     )
 ```
 
-3. Importar no parser no `__init__.py`:
+3. Importar no `__init__.py`:
 
 ```python
 # parsers/__init__.py
@@ -134,7 +183,7 @@ python cli.py parse fatura.pdf --banco inter  # "latest" por padrão
 
 | Função | Descrição |
 |--------|-----------|
-|- `extract_text(path)` | Texto + linhas com posições (`x0`, `top`) + tabelas. Usa pdfplumber primário, pymupdf fallback para scans. |
+| `extract_text(path)` | Texto + linhas com posições (`x0`, `top`) + tabelas. Usa pdfplumber primário, pymupdf fallback para scans. |
 | `extract_lines(path)` | Lista achatada de linhas visuais — `{page, top, words: [{text, x0}]}`. |
 
 ## Testes
