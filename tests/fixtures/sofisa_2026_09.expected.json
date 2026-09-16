@@ -1,0 +1,970 @@
+{
+  "banco": "sofisa",
+  "modelo": "2026-09",
+  "fechamento": "2026-09-15",
+  "vencimento": "2026-09-20",
+  "total_a_pagar": "6727.55",
+  "pagamento_minimo": "672.76",
+  "transacoes": [
+    {
+      "data": "2025-11-30",
+      "descricao": "EC *STERILAIR",
+      "valor": "74.80",
+      "parcela_atual": 1,
+      "parcela_total": 10,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9219"
+    },
+    {
+      "data": "2025-12-12",
+      "descricao": "AMAZONMKTPLC*COMBINAND",
+      "valor": "31.96",
+      "parcela_atual": 1,
+      "parcela_total": 10,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9219"
+    },
+    {
+      "data": "2026-02-20",
+      "descricao": "SHOPEE *MUNDOTECHIMPOR",
+      "valor": "310.83",
+      "parcela_atual": 7,
+      "parcela_total": 12,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9219"
+    },
+    {
+      "data": "2026-03-15",
+      "descricao": "AMAZONMKTPLC*BTWOODLTD",
+      "valor": "56.24",
+      "parcela_atual": 6,
+      "parcela_total": 12,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9219"
+    },
+    {
+      "data": "2026-03-17",
+      "descricao": "AMAZON BR",
+      "valor": "119.99",
+      "parcela_atual": 6,
+      "parcela_total": 10,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9219"
+    },
+    {
+      "data": "2026-05-17",
+      "descricao": "EC *GOGOCLOSET001",
+      "valor": "28.11",
+      "parcela_atual": 4,
+      "parcela_total": 5,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9219"
+    },
+    {
+      "data": "2026-05-18",
+      "descricao": "AMAZONMKTPLC*SAMSUNGEL",
+      "valor": "419.69",
+      "parcela_atual": 4,
+      "parcela_total": 12,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9219"
+    },
+    {
+      "data": "2026-05-19",
+      "descricao": "MERCADO*MERCADOLIVRE",
+      "valor": "179.90",
+      "parcela_atual": 4,
+      "parcela_total": 10,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9219"
+    },
+    {
+      "data": "2026-05-24",
+      "descricao": "SHOPEE *DREAMBOXCASA",
+      "valor": "58.66",
+      "parcela_atual": 4,
+      "parcela_total": 5,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9219"
+    },
+    {
+      "data": "2026-05-24",
+      "descricao": "CR *CHICO REI",
+      "valor": "23.42",
+      "parcela_atual": 4,
+      "parcela_total": 4,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9219"
+    },
+    {
+      "data": "2026-05-25",
+      "descricao": "EC *TERABYTESHOP",
+      "valor": "72.54",
+      "parcela_atual": 4,
+      "parcela_total": 12,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9219"
+    },
+    {
+      "data": "2026-06-02",
+      "descricao": "SHOPEE *FIDCOMEX",
+      "valor": "236.62",
+      "parcela_atual": 4,
+      "parcela_total": 12,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9219"
+    },
+    {
+      "data": "2026-06-16",
+      "descricao": "AMAZONMKTPLC*GROUPTXRL",
+      "valor": "66.95",
+      "parcela_atual": 3,
+      "parcela_total": 12,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9219"
+    },
+    {
+      "data": "2026-06-16",
+      "descricao": "SHOPEE *MARCINHOPET",
+      "valor": "57.62",
+      "parcela_atual": 3,
+      "parcela_total": 4,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9219"
+    },
+    {
+      "data": "2026-06-18",
+      "descricao": "AMAZONMKTPLC*AFEBOIKOI",
+      "valor": "31.98",
+      "parcela_atual": 3,
+      "parcela_total": 5,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9219"
+    },
+    {
+      "data": "2026-06-25",
+      "descricao": "AMAZON BR",
+      "valor": "78.85",
+      "parcela_atual": 3,
+      "parcela_total": 10,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9219"
+    },
+    {
+      "data": "2026-06-26",
+      "descricao": "AMAZONMKTPLC*CASABRASI",
+      "valor": "43.61",
+      "parcela_atual": 3,
+      "parcela_total": 6,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9219"
+    },
+    {
+      "data": "2026-07-01",
+      "descricao": "AMAZON MARKETPLACE",
+      "valor": "62.11",
+      "parcela_atual": 3,
+      "parcela_total": 12,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9219"
+    },
+    {
+      "data": "2026-07-14",
+      "descricao": "AMAZON MARKETPLACE",
+      "valor": "42.80",
+      "parcela_atual": 3,
+      "parcela_total": 6,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9219"
+    },
+    {
+      "data": "2026-07-22",
+      "descricao": "AMAZONMKTPLC*LUZESDACI",
+      "valor": "40.67",
+      "parcela_atual": 2,
+      "parcela_total": 6,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9219"
+    },
+    {
+      "data": "2026-07-22",
+      "descricao": "AMAZON BR",
+      "valor": "37.74",
+      "parcela_atual": 2,
+      "parcela_total": 3,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9219"
+    },
+    {
+      "data": "2026-07-23",
+      "descricao": "AMAZON MARKETPLACE",
+      "valor": "30.81",
+      "parcela_atual": 2,
+      "parcela_total": 4,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9219"
+    },
+    {
+      "data": "2026-08-15",
+      "descricao": "AMAZON MARKETPLACE",
+      "valor": "36.67",
+      "parcela_atual": 1,
+      "parcela_total": 6,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9219"
+    },
+    {
+      "data": "2026-08-20",
+      "descricao": "Compra a Vista WELLHUB MARCOS RICIOLI",
+      "valor": "82.40",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9219"
+    },
+    {
+      "data": "2026-08-20",
+      "descricao": "AMAZON MARKETPLACE",
+      "valor": "54.27",
+      "parcela_atual": 1,
+      "parcela_total": 8,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9219"
+    },
+    {
+      "data": "2026-08-21",
+      "descricao": "Ajuste a Credito ESTAB. PARCEL. DE COMPRA",
+      "valor": "-89.90",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9219"
+    },
+    {
+      "data": "2026-08-25",
+      "descricao": "Compra a Vista WELLHUB WESLEY OLIVEIRA",
+      "valor": "82.40",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9219"
+    },
+    {
+      "data": "2026-08-26",
+      "descricao": "Compra a Vista AMAZON BR",
+      "valor": "40.00",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9219"
+    },
+    {
+      "data": "2026-08-26",
+      "descricao": "Compra a Vista WELLHUB JHONATAN AUGUSTO",
+      "valor": "82.40",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9219"
+    },
+    {
+      "data": "2026-08-26",
+      "descricao": "Compra a Vista AMAZONMKTPLC*AGBECOMER",
+      "valor": "23.90",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9219"
+    },
+    {
+      "data": "2026-08-27",
+      "descricao": "Compra a Vista BRS*SHEINCOM",
+      "valor": "127.56",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9219"
+    },
+    {
+      "data": "2026-08-29",
+      "descricao": "Compra a Vista IFD*PANIFICADORA E LAN",
+      "valor": "204.75",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9219"
+    },
+    {
+      "data": "2026-08-29",
+      "descricao": "Compra a Vista IFD*36901409 FABIO HEN",
+      "valor": "111.89",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9219"
+    },
+    {
+      "data": "2026-08-31",
+      "descricao": "Compra a Vista 99FOOD *COLHERADA - MARMI",
+      "valor": "17.49",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9219"
+    },
+    {
+      "data": "2026-08-31",
+      "descricao": "Compra a Vista AMAZON BR",
+      "valor": "54.14",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9219"
+    },
+    {
+      "data": "2026-08-31",
+      "descricao": "Compra a Vista 99*",
+      "valor": "4.66",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9219"
+    },
+    {
+      "data": "2026-08-31",
+      "descricao": "Compra a Vista 99*",
+      "valor": "15.90",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9219"
+    },
+    {
+      "data": "2026-08-31",
+      "descricao": "Compra a Vista 99*",
+      "valor": "23.40",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9219"
+    },
+    {
+      "data": "2026-08-31",
+      "descricao": "AMAZON MARKETPLACE",
+      "valor": "30.92",
+      "parcela_atual": 1,
+      "parcela_total": 5,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9219"
+    },
+    {
+      "data": "2026-08-31",
+      "descricao": "Ajuste a Credito",
+      "valor": "-17.49",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9219"
+    },
+    {
+      "data": "2026-09-01",
+      "descricao": "Compra a Vista 99*",
+      "valor": "27.10",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9219"
+    },
+    {
+      "data": "2026-09-03",
+      "descricao": "Compra a Vista MERCADOLIVRE*CONNECTCO",
+      "valor": "93.94",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9219"
+    },
+    {
+      "data": "2026-09-03",
+      "descricao": "Compra a Vista MERCADOLIVRE*MERCADOLI",
+      "valor": "51.86",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9219"
+    },
+    {
+      "data": "2026-09-09",
+      "descricao": "MERCADOLIVRE*REC77OUTF",
+      "valor": "40.12",
+      "parcela_atual": 1,
+      "parcela_total": 2,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9219"
+    },
+    {
+      "data": "2026-09-10",
+      "descricao": "AMAZON BR",
+      "valor": "22.00",
+      "parcela_atual": 1,
+      "parcela_total": 2,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9219"
+    },
+    {
+      "data": "2026-09-11",
+      "descricao": "Compra a Vista MERCADO*MERCADOLIVRE",
+      "valor": "39.99",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9219"
+    },
+    {
+      "data": "2026-09-12",
+      "descricao": "Compra a Vista IFD*DOM MARTIELLO PIZZ",
+      "valor": "202.49",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9219"
+    },
+    {
+      "data": "2026-09-12",
+      "descricao": "AMAZON MARKETPLACE",
+      "valor": "25.30",
+      "parcela_atual": 1,
+      "parcela_total": 2,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9219"
+    },
+    {
+      "data": "2026-09-13",
+      "descricao": "AMAZON BR",
+      "valor": "35.98",
+      "parcela_atual": 1,
+      "parcela_total": 4,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9219"
+    },
+    {
+      "data": "2026-08-01",
+      "descricao": "PANIFICADORA E CO",
+      "valor": "282.79",
+      "parcela_atual": 2,
+      "parcela_total": 3,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9735"
+    },
+    {
+      "data": "2026-08-14",
+      "descricao": "Compra a Vista NONO CAFE",
+      "valor": "14.00",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9735"
+    },
+    {
+      "data": "2026-08-15",
+      "descricao": "Compra a Vista DG BARBER",
+      "valor": "294.60",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9735"
+    },
+    {
+      "data": "2026-08-15",
+      "descricao": "Compra a Vista PANVEL FILIAL 500",
+      "valor": "24.99",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9735"
+    },
+    {
+      "data": "2026-08-16",
+      "descricao": "Compra a Vista DEEP LOUNGE BAR",
+      "valor": "40.00",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9735"
+    },
+    {
+      "data": "2026-08-16",
+      "descricao": "XV DE NOVEMBRO",
+      "valor": "117.12",
+      "parcela_atual": 1,
+      "parcela_total": 3,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9735"
+    },
+    {
+      "data": "2026-08-17",
+      "descricao": "Compra a Vista NONO CAFE",
+      "valor": "21.90",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9735"
+    },
+    {
+      "data": "2026-08-17",
+      "descricao": "Compra a Vista R COMENDADOR ARAUJO",
+      "valor": "47.02",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9735"
+    },
+    {
+      "data": "2026-08-18",
+      "descricao": "Compra a Vista NONO CAFE",
+      "valor": "21.90",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9735"
+    },
+    {
+      "data": "2026-08-19",
+      "descricao": "Compra a Vista NONO CAFE",
+      "valor": "23.90",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9735"
+    },
+    {
+      "data": "2026-08-19",
+      "descricao": "Compra a Vista IL BARBUTO",
+      "valor": "249.00",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9735"
+    },
+    {
+      "data": "2026-08-20",
+      "descricao": "Pagamento de Fatura",
+      "valor": "-4967.42",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9735"
+    },
+    {
+      "data": "2026-08-20",
+      "descricao": "Compra a Vista JANELA BAR",
+      "valor": "53.00",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9735"
+    },
+    {
+      "data": "2026-08-20",
+      "descricao": "Compra a Vista JANELA BAR",
+      "valor": "68.00",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9735"
+    },
+    {
+      "data": "2026-08-21",
+      "descricao": "Compra a Vista RESTAURANTE VICENTE",
+      "valor": "57.19",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9735"
+    },
+    {
+      "data": "2026-08-21",
+      "descricao": "Compra a Vista NONO CAFE",
+      "valor": "14.00",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9735"
+    },
+    {
+      "data": "2026-08-21",
+      "descricao": "Compra a Vista R COMENDADOR ARAUJO",
+      "valor": "143.31",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9735"
+    },
+    {
+      "data": "2026-08-22",
+      "descricao": "Compra a Vista DORACIGRINGS",
+      "valor": "35.00",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9735"
+    },
+    {
+      "data": "2026-08-22",
+      "descricao": "Compra a Vista 4BEANSCOFFEECO",
+      "valor": "86.00",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9735"
+    },
+    {
+      "data": "2026-08-22",
+      "descricao": "Compra a Vista 63926186FADI",
+      "valor": "54.00",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9735"
+    },
+    {
+      "data": "2026-08-22",
+      "descricao": "Compra a Vista BONIN BAKERY",
+      "valor": "36.00",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9735"
+    },
+    {
+      "data": "2026-08-22",
+      "descricao": "Compra a Vista CASA*CARNES*TIROLEZ",
+      "valor": "32.86",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9735"
+    },
+    {
+      "data": "2026-08-22",
+      "descricao": "Compra a Vista CHQ CURITIBA 06",
+      "valor": "23.00",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9735"
+    },
+    {
+      "data": "2026-08-24",
+      "descricao": "PANVEL FILIAL 500",
+      "valor": "64.81",
+      "parcela_atual": 1,
+      "parcela_total": 3,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9735"
+    },
+    {
+      "data": "2026-08-25",
+      "descricao": "Compra a Vista BOCCA LUPO",
+      "valor": "15.00",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9735"
+    },
+    {
+      "data": "2026-08-25",
+      "descricao": "Compra a Vista NONO CAFE",
+      "valor": "14.00",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9735"
+    },
+    {
+      "data": "2026-08-25",
+      "descricao": "Compra a Vista EAT ME",
+      "valor": "48.70",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9735"
+    },
+    {
+      "data": "2026-08-26",
+      "descricao": "Compra a Vista NONO CAFE",
+      "valor": "14.00",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9735"
+    },
+    {
+      "data": "2026-08-27",
+      "descricao": "Compra a Vista NONO CAFE",
+      "valor": "14.00",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9735"
+    },
+    {
+      "data": "2026-08-28",
+      "descricao": "Compra a Vista NONO CAFE",
+      "valor": "23.90",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9735"
+    },
+    {
+      "data": "2026-08-31",
+      "descricao": "Compra a Vista PODOMAX",
+      "valor": "51.00",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9735"
+    },
+    {
+      "data": "2026-08-31",
+      "descricao": "Compra a Vista PANVEL FILIAL 500",
+      "valor": "13.99",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9735"
+    },
+    {
+      "data": "2026-09-02",
+      "descricao": "Compra a Vista RAIA DROGASIL SA",
+      "valor": "30.68",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9735"
+    },
+    {
+      "data": "2026-09-02",
+      "descricao": "Compra a Vista RAIA DROGASIL SA",
+      "valor": "24.68",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9735"
+    },
+    {
+      "data": "2026-09-05",
+      "descricao": "Compra a Vista MERCEARIA KIMURA",
+      "valor": "149.70",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9735"
+    },
+    {
+      "data": "2026-09-05",
+      "descricao": "Compra a Vista EVEREST INN",
+      "valor": "35.90",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9735"
+    },
+    {
+      "data": "2026-09-05",
+      "descricao": "Compra a Vista EVEREST INN",
+      "valor": "99.80",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9735"
+    },
+    {
+      "data": "2026-09-06",
+      "descricao": "Compra a Vista CAFE BISTRO LP",
+      "valor": "188.10",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9735"
+    },
+    {
+      "data": "2026-09-06",
+      "descricao": "Compra a Vista 63926186FADI",
+      "valor": "110.00",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9735"
+    },
+    {
+      "data": "2026-09-08",
+      "descricao": "Compra a Vista DAISO BRASIL",
+      "valor": "275.84",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9735"
+    },
+    {
+      "data": "2026-09-08",
+      "descricao": "Compra a Vista CURITIBA",
+      "valor": "20.90",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9735"
+    },
+    {
+      "data": "2026-09-08",
+      "descricao": "Compra a Vista MINI KALZONE",
+      "valor": "76.00",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9735"
+    },
+    {
+      "data": "2026-09-11",
+      "descricao": "Compra a Vista RAIA DROGASIL SA",
+      "valor": "29.14",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.9735"
+    },
+    {
+      "data": "2026-03-11",
+      "descricao": "ALARGADORES.*ALAR",
+      "valor": "8.80",
+      "parcela_atual": 7,
+      "parcela_total": 10,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.0854"
+    },
+    {
+      "data": "2026-04-26",
+      "descricao": "AMAZONMKTPLC*LHCOMPROD",
+      "valor": "30.98",
+      "parcela_atual": 5,
+      "parcela_total": 5,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.0854"
+    },
+    {
+      "data": "2026-05-25",
+      "descricao": "AMAZON MARKETPLACE",
+      "valor": "40.88",
+      "parcela_atual": 4,
+      "parcela_total": 6,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.0854"
+    },
+    {
+      "data": "2026-06-23",
+      "descricao": "CLINICA VETERINARIA",
+      "valor": "77.13",
+      "parcela_atual": 3,
+      "parcela_total": 12,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.******.0854"
+    }
+  ]
+}

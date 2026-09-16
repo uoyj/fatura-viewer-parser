@@ -27,16 +27,7 @@ class Transacao:
     parcela_total: Optional[int] = None
     moeda: str = "BRL"
     categoria: Optional[str] = None
-
-
-@dataclass
-class Cartao:
-    """
-    Cartão dentro da fatura.
-    """
-    numero_mascarado: str
-    titular: str
-    transacoes: list[Transacao] = field(default_factory=list)
+    cartao: str = ""
 
 
 @dataclass
@@ -44,14 +35,14 @@ class Fatura:
     """
     Fatura parseada — output do parser.
 
-    Camores fixos:
+    Campos fixos:
     - banco: nome do banco (ex: "sofisa")
     - modelo: versão do layout (ex: "2026-09")
     - fechamento: data de fechamento da fatura
     - vencimento: data de vencimento
     - total_a_pagar: valor total da fatura
     - pagamento_minimo: valor mínimo de pagamento
-    - cartoes: lista de cartões com suas transações
+    - transacoes: lista plana de transações, cada uma tagueada com "cartao"
     """
     banco: str
     modelo: str
@@ -59,7 +50,7 @@ class Fatura:
     vencimento: date
     total_a_pagar: Decimal
     pagamento_minimo: Decimal
-    cartoes: list[Cartao] = field(default_factory=list)
+    transacoes: list[Transacao] = field(default_factory=list)
 
 
 def fatura_para_dict(fatura: Fatura) -> dict:
@@ -77,23 +68,17 @@ def fatura_para_dict(fatura: Fatura) -> dict:
         "vencimento": fatura.vencimento.isoformat(),
         "total_a_pagar": str(fatura.total_a_pagar),
         "pagamento_minimo": str(fatura.pagamento_minimo),
-        "cartoes": [
+        "transacoes": [
             {
-                "numero_mascarado": cartao.numero_mascarado,
-                "titular": cartao.titular,
-                "transacoes": [
-                    {
-                        "data": t.data.isoformat(),
-                        "descricao": t.descricao,
-                        "valor": str(t.valor),
-                        "parcela_atual": t.parcela_atual,
-                        "parcela_total": t.parcela_total,
-                        "moeda": t.moeda,
-                        "categoria": t.categoria,
-                    }
-                    for t in cartao.transacoes
-                ],
+                "data": t.data.isoformat(),
+                "descricao": t.descricao,
+                "valor": str(t.valor),
+                "parcela_atual": t.parcela_atual,
+                "parcela_total": t.parcela_total,
+                "moeda": t.moeda,
+                "categoria": t.categoria,
+                "cartao": t.cartao,
             }
-            for cartao in fatura.cartoes
+            for t in fatura.transacoes
         ],
     }

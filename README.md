@@ -53,21 +53,16 @@ Output: JSON com a estrutura `Fatura`:
   "vencimento": "2026-09-25",
   "total_a_pagar": "3250.00",
   "pagamento_minimo": "975.00",
-  "cartoes": [
+  "transacoes": [
     {
-      "numero_mascarado": "1234 **** **** 5678",
-      "titular": "JOHNATAN SILVA",
-      "transacoes": [
-        {
-          "data": "2026-09-01",
-          "descricao": "SUPERMERCADO XYZ",
-          "valor": "150.00",
-          "parcela_atual": 1,
-          "parcela_total": 3,
-          "moeda": "BRL",
-          "categoria": null
-        }
-      ]
+      "data": "2026-09-01",
+      "descricao": "SUPERMERCADO XYZ",
+      "valor": "150.00",
+      "parcela_atual": 1,
+      "parcela_total": 3,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "4563**.*******.9219"
     }
   ]
 }
@@ -139,7 +134,7 @@ python cli.py parse fatura.pdf --banco inter  # "latest" por padrão
 
 | Função | Descrição |
 |--------|-----------|
-| `extract_text(path)` | Texto + linhas com posições (`x0`, `top`) + tabelas. Usa pdfplumber primário, pymupdf fallback para scans. |
+|- `extract_text(path)` | Texto + linhas com posições (`x0`, `top`) + tabelas. Usa pdfplumber primário, pymupdf fallback para scans. |
 | `extract_lines(path)` | Lista achatada de linhas visuais — `{page, top, words: [{text, x0}]}`. |
 
 ## Testes

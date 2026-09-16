@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Testes e cobertura
+.pytest_cache/
+.coverage
+htmlcov/
+.coverage.*
+*.coverage
+
+# PDF de exemplo (grande, binário — mantenha local, clone via script)
+in/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
