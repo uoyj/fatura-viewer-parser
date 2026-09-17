@@ -8,7 +8,9 @@ Extrai transações de faturas de cartão de crédito a partir de PDFs e devolve
 
 ```
 fatura-viewer/
-├── api.py               # FastAPI: POST /faturas, GET /faturas, GET /parsers
+├── api.py               # FastAPI: POST /faturas, GET /faturas, GET /parsers + StaticFiles mount
+├── static/index.html    # Frontend SPA (HTML+CSS+JS inline, sem CDN/framework)
+├── categorizer.py       # Categorização determinística por palavra-chave (12 categorias)
 ├── extractors/          # Extração bruta de PDF (texto, posições, tabelas). Genérico, sem lógica de banco.
 ├── parsers/             # Um módulo por modelo banco+versão (ex: sofisa_2026_09.py)
 ├── registry.py          # Registry (banco, versão) → função parser + get_parser()
@@ -67,11 +69,25 @@ Respostas:
 
 Dados são persistidos em `data/faturas.jsonl` (uma linha JSON por fatura) e uploads em `data/uploads/<uuid>.pdf`.
 
+### Frontend SPA
+
+Acesse http://127.0.0.1:8000/ — interface web servida pelo próprio FastAPI via `StaticFiles`.
+
+```
+Layout:
+  ├── Barra superior: título + dropdown de faturas + "Nova fatura"
+  ├── Tela upload: input PDF, select banco, POST multipart
+  └── Tela viewer: cards header, filtros, tabela ordenável, totais por categoria
+```
+
 ### CLI — rodar parser sobre um PDF
 
 ```bash
 # Forçar banco e versão
 python cli.py parse in/Fatura.pdf --banco sofisa --versao 2026-09
+
+# Aplicar categorização por palavra-chave
+python cli.py parse in/Fatura.pdf --banco sofisa --versao 2026-09 --categorizar
 
 # Listar parsers disponíveis
 python cli.py parsers
@@ -105,12 +121,43 @@ Output: JSON com a estrutura `Fatura`:
       "parcela_atual": null,
       "parcela_total": null,
       "moeda": "BRL",
-      "categoria": null,
+      "categoria": "Academia/Wellness",
       "cartao": "4563**.******.9219"
     }
   ]
 }
 ```
+
+Com `--categorizar` (ou via API), `categoria` é preenchido por regra de palavra-chave:
+
+```
+Pagamento da fatura, Estorno/Ajuste, Academia/Wellness, Farmacia,
+Veterinario, Saude/Podologia, Transporte/Apps, Restaurante/Cafe,
+Bar, Supermercado/Mercado, Compras online, Outros
+```
+
+### Categorização determinística
+
+`categorizer.py` — sem ML, regras de substring (case-insensitive). Primeira que casa vence; fallback `"Outros"`.
+
+```bash
+python cli.py parse in/Fatura.pdf --banco sofisa --versao 2026-09 --categorizar
+```
+
+| Categoria | Padrões-chave |
+|-----------|---------------|
+| Pagamento da fatura | `PAGAMENTO DE FATURA` |
+| Estorno/Ajuste | `AJUSTE A CREDITO` |
+| Academia/Wellness | `WELLHUB` |
+| Farmacia | `RAIA DROGASIL`, `PANVEL` |
+| Veterinario | `CLINICA VETERINARIA` |
+| Saude/Podologia | `PODOMAX`, `IL BARBUTO` |
+| Transporte/Apps | `99FOOD`, `99*` |
+| Restaurante/Cafe | `NONO CAFE`, `EVEREST INN`, `DOM MARTIELLO` |
+| Bar | `DG BARBER`, `DEEP LOUNGE BAR`, `JANELA BAR` |
+| Supermercado/Mercado | `MERCADOLIVRE`, `MERCEARIA`, `PANIFICADORA` |
+| Compras online | `AMAZON`, `SHOPEE`, `SHEIN`, `STERILAIR` |
+| Outros | (fallback) |
 
 ### Extração bruta (sem parser específico)
 
@@ -134,12 +181,8 @@ for line in lines:
 - **Datas** — ISO (`YYYY-MM-DD`)
 - **Valores monetários** — `Decimal`, serializado como string (`"150.00"`) — **nunca** `float`
 - **Transacao.valor** — positivo = débito (compra), negativo = crédito (estorno/pagamento)
-- **Transacao.cartao** — número mascarado da fatura (ex: `4563**.******.9219`), `""` se desconhecido
-- **categoria** — `null` por enquanto (sem categorização automática)
-
-### Modelo de dados (simplificado — REV 3)
-
-NÃO há mais `Cartao` como dataclass separada. O output é uma **lista plana de `Transacao`**, cada uma com o campo `cartao` (string com o número mascarado). Isso reflete que a fatura é consolidada — múltiplos cartões aparecem como tags nas transações, não como seções.
+- **Transacao.cartao** — número mascarado (`"4563**.******.9219"`), `""` se desconhecido
+- **categoria** — `null` sem categorizador; preenchido via `categorizer.categorizar()`
 
 ## Adicionar um novo parser
 

@@ -152,6 +152,11 @@ async def listar_parsers():
     return parsers_registrados()
 
 
+# Servir frontend estático (após todas as rotas da API)
+from fastapi.staticfiles import StaticFiles
+app.mount("/", StaticFiles(directory="static", html=True), name="static")
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="127.0.0.1", port=8000)
