@@ -4,10 +4,11 @@ API HTTP para fatura-viewer (FastAPI).
 Uso interno de casa — sem autenticação.
 
 Endpoints:
-  POST /faturas          — upload de PDF, parseia e persiste
-  GET  /faturas          — lista resumida de faturas
-  GET  /faturas/{id}     — retorna fatura completa
-  GET  /parsers          — lista parsers registrados
+  POST   /faturas          — upload de PDF, parseia e persiste
+  GET    /faturas          — lista resumida de faturas
+  GET    /faturas/{id}     — retorna fatura completa
+  DELETE /faturas/{id}     — remove fatura + PDF
+  GET    /parsers          — lista parsers registrados
 
 Run:
   uvicorn api:app --reload
@@ -42,6 +43,34 @@ JSONL_PATH = DATA_DIR / "faturas.jsonl"
 
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+
+# ---------------------------------------------------------------------------
+# Helpers de persistência
+# ---------------------------------------------------------------------------
+
+def _carregar_registros() -> list[dict]:
+    """Lê data/faturas.jsonl e retorna lista de registros (retorna [] se não existe)."""
+    if not JSONL_PATH.exists():
+        return []
+    lines = JSONL_PATH.read_text(encoding="utf-8").strip().splitlines()
+    return [json.loads(line) for line in lines if line.strip()]
+
+
+def _salvar_registros(regs: list[dict]) -> None:
+    """Regrava o JSONL com a lista dada (uma linha JSON por registro)."""
+    JSONL_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(JSONL_PATH, "w", encoding="utf-8") as f:
+        for reg in regs:
+            f.write(json.dumps(reg, ensure_ascii=False) + "\n")
+
+
+def _encontrar_registro(fatura_id: str) -> dict | None:
+    """Procura um registro pelo ID no JSONL. Retorna o dict ou None."""
+    for reg in _carregar_registros():
+        if reg["id"] == fatura_id:
+            return reg
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -109,8 +138,9 @@ async def upload_fatura(arquivo: UploadFile = File(...), banco: str = Form(...),
         "modelo": payload["modelo"],
         "payload": payload,
     }
-    with open(JSONL_PATH, "a") as f:
-        f.write(json.dumps(registro, ensure_ascii=False) + "\n")
+    regras = _carregar_registros()
+    regras.append(registro)
+    _salvar_registros(regras)
 
     return payload
 
@@ -118,18 +148,15 @@ async def upload_fatura(arquivo: UploadFile = File(...), banco: str = Form(...),
 @app.get("/faturas")
 async def listar_faturas():
     faturas = []
-    if JSONL_PATH.exists():
-        lines = JSONL_PATH.read_text(encoding="utf-8").strip().splitlines()
-        for line in lines:
-            reg = json.loads(line)
-            p = reg["payload"]
-            faturas.append({
-                "id": reg["id"],
-                "banco": p["banco"],
-                "modelo": p["modelo"],
-                "fechamento": p["fechamento"],
-                "total_a_pagar": p["total_a_pagar"],
-            })
+    for reg in _carregar_registros():
+        p = reg["payload"]
+        faturas.append({
+            "id": reg["id"],
+            "banco": p["banco"],
+            "modelo": p["modelo"],
+            "fechamento": p["fechamento"],
+            "total_a_pagar": p["total_a_pagar"],
+        })
     # Mais recentes primeiro
     faturas.reverse()
     return faturas
@@ -137,14 +164,27 @@ async def listar_faturas():
 
 @app.get("/faturas/{fatura_id}")
 async def get_fatura(fatura_id: str):
-    if not JSONL_PATH.exists():
+    reg = _encontrar_registro(fatura_id)
+    if reg is None:
         raise HTTPException(status_code=404, detail="Fatura não encontrada")
-    with open(JSONL_PATH, "r", encoding="utf-8") as f:
-        for line in f:
-            reg = json.loads(line)
-            if reg["id"] == fatura_id:
-                return reg["payload"]
-    raise HTTPException(status_code=404, detail="Fatura não encontrada")
+    return reg["payload"]
+
+
+@app.delete("/faturas/{fatura_id}")
+async def delete_fatura(fatura_id: str):
+    reg = _encontrar_registro(fatura_id)
+    if reg is None:
+        raise HTTPException(status_code=404, detail="Fatura não encontrada")
+
+    # Remover do JSONL (regrava sem o registro)
+    regras = [r for r in _carregar_registros() if r["id"] != fatura_id]
+    _salvar_registros(regras)
+
+    # Apagar PDF do disco
+    pdf_path = UPLOADS_DIR / f"{fatura_id}.pdf"
+    pdf_path.unlink(missing_ok=True)
+
+    return {"ok": True, "id": fatura_id}
 
 
 @app.get("/parsers")
