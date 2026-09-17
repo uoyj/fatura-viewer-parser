@@ -36,5 +36,3 @@ Thumbs.db
 
 # Logs
 *.log
-data/
-static/

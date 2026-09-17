@@ -1,0 +1,889 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>fatura-viewer</title>
+<style>
+:root {
+  --bg: #0f172a;
+  --card: #1e293b;
+  --border: #33415b;
+  --text: #e2e8f0;
+  --muted: #94a3b8;
+  --accent: #38bdf8;
+  --green: #4ade80;
+  --red: #f87171;
+  --yellow: #fbbf24;
+  --orange: #fb971f;
+  --purple: #c084fc;
+  --pink: #f472b6;
+  --blue: #60a5fa;
+  --teal: #2dd36f;
+  --max-w: 1100px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  padding: 16px;
+  max-width: var(--max-w);
+  margin: 0 auto;
+  line-height: 1.5;
+}
+/* ===== BARRA SUPERIOR ===== */
+header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+header h1 {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+.dropdown-container {
+  position: relative;
+  flex: 1;
+  min-width: 200px;
+}
+.dropdown-selected {
+  background: var(--card);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  font-size: 0.9rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.dropdown-options {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin-top: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 100;
+  display: none;
+}
+.dropdown-options.show { display: block; }
+.dropdown-option {
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.dropdown-option:hover { background: #283548; }
+.dropdown-option .delete-x {
+  color: var(--red);
+  opacity: 0.7;
+  cursor: pointer;
+  font-weight: bold;
+  padding: 0 4px;
+}
+.dropdown-option .delete-x:hover { opacity: 1; }
+.btn-nova {
+  background: var(--accent);
+  color: #0f172a;
+  border: none;
+  padding: 8px 20px;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+.btn-nova:hover { background: #0eb5e9; }
+.btn-excluir {
+  background: rgba(248, 113, 111, 0.15);
+  color: var(--red);
+  border: 1px solid var(--red);
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+.btn-excluir:hover { background: rgba(248, 113, 111, 0.3); }
+
+/* ===== ESTADOS ===== */
+.tela { display: none; }
+.tela.ativa { display: block; }
+.loading {
+  text-align: center;
+  padding: 40px;
+  color: var(--muted);
+}
+
+/* ===== UPLOAD ===== */
+.upload-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 24px;
+}
+.upload-card h2 {
+  margin-bottom: 16px;
+  font-size: 1.2rem;
+  color: var(--accent);
+}
+.upload-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.input-file {
+  background: var(--card);
+  border: 1px dashed var(--border);
+  color: var(--muted);
+  padding: 12px;
+  border-radius: 6px;
+  font-size: 0.9rem;
+}
+.input-select {
+  background: var(--card);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 10px;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+.btn-enviar {
+  background: var(--teal);
+  color: #0f172a;
+  border: none;
+  padding: 12px;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 1rem;
+}
+.btn-enviar:disabled { opacity: 0.5; cursor: not-allowed; }
+.erro-box {
+  background: rgba(248, 113, 111, 0.15);
+  border: 1px solid var(--red);
+  color: var(--red);
+  padding: 12px;
+  border-radius: 6px;
+  font-weight: 500;
+  text-align: center;
+}
+
+/* ===== VIEWER ===== */
+.viewer-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.viewer-header h2 {
+  font-size: 1.3rem;
+  color: var(--accent);
+}
+.header-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.header-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  text-align: center;
+}
+.header-card .label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+.header-card .value {
+  font-size: 1.3rem;
+  font-weight: 700;
+}
+.header-card.total .value { color: var(--accent); }
+
+/* ===== FILTROS ===== */
+.filtros {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: end;
+}
+.filtro-grupo {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 140px;
+}
+.filtro-grupo label {
+  font-size: 0.7rem;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+.filtro-input {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 8px;
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+
+/* ===== TABELA ===== */
+.table-wrapper {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+th {
+  background: #0f172a;
+  color: var(--muted);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  padding: 10px 12px;
+  text-align: left;
+  cursor: default;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+th.sortable { cursor: pointer; }
+th.sortable:hover { color: var(--accent); }
+th.sortable.sorted-asc::after { content: " ▲"; color: var(--accent); }
+th.sortable.sorted-desc::after { content: " ▼"; color: var(--accent); }
+td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.85rem;
+}
+tr:hover td { background: #0f172a; }
+
+/* ===== BADGES ===== */
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.badge-parcela {
+  background: rgba(56, 189, 248, 0.15);
+  color: var(--accent);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+}
+.badge-categoria {
+  border: 1px solid rgba(255,255,255,0.1);
+  color: var(--text);
+}
+.valor-positivo { color: var(--text); font-weight: 500; }
+.valor-negativo { color: var(--green); font-weight: 600; }
+
+/* ===== RODAPÉ TABELA ===== */
+.table-footer {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 8px 8px;
+  padding: 12px 16px;
+  font-size: 0.8rem;
+  color: var(--muted);
+  display: flex;
+  justify-content: space-between;
+}
+
+/* ===== TOTAL POR CATEGORIA ===== */
+.categoria-section {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  margin-top: 16px;
+}
+.categoria-section h3 {
+  font-size: 1rem;
+  color: var(--accent);
+  margin-bottom: 12px;
+}
+.categoria-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.categoria-item .cat-name {
+  width: 180px;
+  font-size: 0.8rem;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.categoria-item .cat-bar-container {
+  flex: 1;
+  height: 20px;
+  background: var(--bg);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.categoria-item .cat-bar {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+.categoria-item .cat-valor {
+  width: 100px;
+  text-align: right;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+</style>
+</head>
+<body>
+
+<!-- ===== BARRA SUPERIOR ===== -->
+<header id="header-barra">
+  <h1>fatura-viewer</h1>
+  <div class="dropdown-container">
+    <div class="dropdown-selected" id="fatura-selecionada">
+      <span>Selecione uma fatura</span>
+      <span>▼</span>
+    </div>
+    <div class="dropdown-options" id="fatura-options"></div>
+  </div>
+  <button class="btn-nova" id="btn-nova-fatura">Nova fatura</button>
+</header>
+
+<!-- ===== TELA DE UPLOAD ===== -->
+<section id="tela-upload" class="tela ativa">
+  <div class="upload-card">
+    <h2>Upload de Fatura</h2>
+    <form id="form-upload" class="upload-form">
+      <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+        <div style="flex: 2; min-width: 140px;">
+          <label for="input-arquivo" class="input-file" style="cursor: pointer; display: block;">
+            <span id="nome-arquivo">📎 Clique para selecionar PDF</span>
+          </label>
+          <input type="file" id="input-arquivo" accept=".pdf" style="display: none;">
+        </div>
+        <div style="flex: 1; min-width: 140px;">
+          <select id="select-banco" class="input-select">
+            <option value="">Carregando bancos...</option>
+          </select>
+        </div>
+      </div>
+      <button type="submit" class="btn-enviar" id="btn-enviar">Enviar</button>
+      <div id="upload-status" style="min-height: 24px;"></div>
+      <div id="erro-upload" class="erro-box" style="display: none;"></div>
+    </form>
+  </div>
+</section>
+
+<!-- ===== TELA DE VISUALIZAÇÃO ===== -->
+<section id="tela-viewer" class="tela">
+  <div class="viewer-header">
+    <h2 id="viewer-title">Visualização da Fatura</h2>
+    <button class="btn-excluir" id="btn-excluir-fatura">Excluir fatura</button>
+  </div>
+
+  <div class="header-cards" id="header-cards"></div>
+
+  <!-- Filtros -->
+  <div class="filtros">
+    <div class="filtro-grupo">
+      <label>Buscar</label>
+      <input type="text" id="filtro-busca" class="filtro-input" placeholder="Descrição...">
+    </div>
+    <div class="filtro-grupo">
+      <label>Categoria</label>
+      <select id="filtro-categoria" class="filtro-input"></select>
+    </div>
+    <div class="filtro-grupo">
+      <label>Cartão</label>
+      <select id="filtro-cartao" class="filtro-input"></select>
+    </div>
+  </div>
+
+  <!-- Tabela -->
+  <div class="table-wrapper">
+    <table>
+      <thead id="table-thead"></thead>
+      <tbody id="table-tbody"></tbody>
+    </table>
+    <div class="table-footer" id="table-footer"></div>
+  </div>
+
+  <!-- Totais por categoria -->
+  <div class="categoria-section">
+    <h3>Totais por categoria (débitos)</h3>
+    <div id="categoria-lista"></div>
+  </div>
+</section>
+
+<script>
+"use strict";
+
+// ===== Estado em memória =====
+let faturasCache = [];      // lista de faturas do GET /faturas
+let faturaAtual = null;     // fatura carregada (objeto completo)
+let transacoesFiltradas = [];  // transacoes apos filtro+sort
+let sortConfig = { key: "data", dir: 'asc' };
+let selectsPopulados = false;  // controle: popular selects só uma vez por fatura
+
+// ===== Utils =====
+function formatarMoeda(v) {
+  if (v === null || v === undefined || v === "") return "—";
+  const n = parseFloat(v);
+  return new Intl.NumberFormat('pt-BR', {style:'currency', currency:'BRL'}).format(n);
+}
+
+function formatarData(iso) {
+  if (!iso) return "—";
+  const [y, m, d] = iso.split('-');
+  return `${d}/${m}/${y}`;
+}
+
+function formatarParcela(parcela_atual, parcela_total) {
+  if (!parcela_atual || !parcela_total) return "—";
+  return `${parcela_atual}/${parcela_total}`;
+}
+
+function corCategoria(nome) {
+  if (!nome) return 'rgba(148,163,184,0.3)';
+  let hash = 0;
+  for (let i = 0; i < nome.length; i++) {
+    hash = nome.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const h = Math.abs(hash) % 360;
+  return `hsl(${h}, 70%, 45%)`;
+}
+
+// ===== API calls =====
+async function apiGET(url) {
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  return resp.json();
+}
+
+async function apiDELETE(url) {
+  const resp = await fetch(url, { method: 'DELETE' });
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  return resp.json();
+}
+
+// ===== Init =====
+async function init() {
+  try {
+    const parsers = await apiGET("/parsers");
+    const bancoSelect = document.getElementById("select-banco");
+    bancoSelect.innerHTML = "";
+    Object.keys(parsers).forEach(banco => {
+      const opt = document.createElement("option");
+      opt.value = banco;
+      opt.textContent = banco.charAt(0).toUpperCase() + banco.slice(1);
+      bancoSelect.appendChild(opt);
+    });
+  } catch(e) {
+    console.error("Erro carregando parsers:", e);
+  }
+
+  await carregarFaturas();
+}
+
+// ===== Carregar lista de faturas =====
+async function carregarFaturas() {
+  try {
+    faturasCache = await apiGET("/faturas");
+    popularDropdownFaturas();
+  } catch(e) {
+    console.error("Erro carregando faturas:", e);
+  }
+}
+
+// ===== Dropdown =====
+function popularDropdownFaturas() {
+  const container = document.getElementById("fatura-selecionada");
+  const options = document.getElementById("fatura-options");
+
+  if (faturasCache.length === 0) {
+    container.innerHTML = '<span>Selecione uma fatura</span><span>▼</span>';
+    options.innerHTML = "";
+    return;
+  }
+
+  // Mostra a última (mais recente) por padrão
+  container.innerHTML = `<span>${formatoResumoFatura(faturasCache[0])}</span><span>▼</span>`;
+  options.innerHTML = "";
+  faturasCache.forEach(f => {
+    const opt = document.createElement("div");
+    opt.className = "dropdown-option";
+    opt.innerHTML = `<span>${formatoResumoFatura(f)}</span><span class="delete-x" onclick="deletarFaturaDropdown(event, '${f.id}')">×</span>`;
+    opt.onclick = (e) => {
+      // Evita disparar o onclick do pai quando clicar no x
+      if (e.target.classList.contains("delete-x")) return;
+      carregarFatura(f.id);
+    };
+    options.appendChild(opt);
+  });
+}
+
+function formatoResumoFatura(f) {
+  const total = formatarMoeda(f.total_a_pagar);
+  const data = f.fechamento || "?";
+  return `${f.banco} · ${data} · ${total}`;
+}
+
+// ===== Carregar fatura específica =====
+async function carregarFatura(id) {
+  try {
+    faturaAtual = await apiGET(`/faturas/${id}`);
+    // Atualizar dropdown
+    const container = document.getElementById("fatura-selecionada");
+    container.innerHTML = `<span>${formatoResumoFatura(faturaAtual)}</span><span>▼</span>`;
+    document.getElementById("fatura-options").classList.remove("show");
+
+    // Popular selects apenas uma vez por fatura
+    selectsPopulados = false;
+
+    // Reset sort ao trocar de fatura
+    sortConfig = { key: "data", dir: 'asc' };
+
+    renderizarViewer();
+    mostrarTelas("viewer");
+  } catch(e) {
+    console.error("Erro carregando fatura:", e);
+  }
+}
+
+// ===== Deletar fatura (do dropdown) =====
+async function deletarFaturaDropdown(e, id) {
+  e.stopPropagation(); // não dispara o onclick do dropdown-option
+  await deletarFatura(id);
+}
+
+// ===== Deletar fatura (do botao do viewer) =====
+document.getElementById("btn-excluir-fatura").onclick = async function() {
+  await deletarFatura(faturaAtual?.id);
+};
+
+async function deletarFatura(id) {
+  if (!id) return;
+  if (!confirm("Excluir esta fatura e o PDF associado?")) return;
+
+  try {
+    await apiDELETE(`/faturas/${id}`);
+    await carregarFaturas();
+
+    // Se a fatura atual foi deletada, carregar a mais recente ou voltar pro upload
+    if (faturaAtual && faturaAtual.id === id) {
+      faturaAtual = null;
+      if (faturasCache.length > 0) {
+        carregarFatura(faturasCache[0].id);
+      } else {
+        mostrarTelas("upload");
+      }
+    } else {
+      // Atualiza dropdown se a fatura atual ainda existe
+      popularDropdownFaturas();
+    }
+  } catch(err) {
+    if (err.message.includes("404")) {
+      alert("Fatura não encontrada");
+    } else {
+      console.error("Erro deletando:", err);
+      alert(`Erro ao excluir: ${err.message}`);
+    }
+    await carregarFaturas();
+  }
+}
+
+// ===== Navegar entre telas =====
+function mostrarTelas(tela) {
+  document.querySelectorAll(".tela").forEach(s => s.classList.remove("ativa"));
+  document.getElementById(`tela-${tela}`).classList.add("ativa");
+}
+
+// ===== Event Listeners =====
+document.getElementById("btn-nova-fatura").onclick = function() {
+  mostrarTelas("upload");
+  document.getElementById("form-upload").reset();
+  document.getElementById("upload-status").innerHTML = "";
+  document.getElementById("erro-upload").style.display = "none";
+};
+
+document.getElementById("input-arquivo").onchange = function(e) {
+  const nome = e.target.files[0]?.name || "📎 Clique para selecionar PDF";
+  document.getElementById("nome-arquivo").textContent = nome;
+};
+
+document.getElementById("form-upload").onsubmit = async function(e) {
+  e.preventDefault();
+  const arquivoInput = document.getElementById("input-arquivo");
+  const bancoSelect = document.getElementById("select-banco");
+  const btnEnviar = document.getElementById("btn-enviar");
+  const statusEl = document.getElementById("upload-status");
+  const erroEl = document.getElementById("erro-upload");
+
+  const arquivo = arquivoInput.files[0];
+  const banco = bancoSelect.value;
+
+  if (!arquivo || !banco) {
+    erroEl.textContent = "Selecione um PDF e um banco.";
+    erroEl.style.display = "block";
+    return;
+  }
+
+  // Loading
+  btnEnviar.disabled = true;
+  statusEl.innerHTML = '<span class="loading">Processando...</span>';
+  erroEl.style.display = "none";
+
+  const formData = new FormData();
+  formData.append("arquivo", arquivo);
+  formData.append("banco", banco);
+
+  try {
+    const resp = await fetch("/faturas", { method: "POST", body: formData });
+    const data = await resp.json();
+
+    if (resp.status === 422) {
+      const erro = data.erro || JSON.stringify(data);
+      erroEl.textContent = erro;
+      erroEl.style.display = "block";
+      statusEl.innerHTML = "";
+    } else if (resp.status === 200) {
+      // Sucesso — carrega a fatura
+      faturaAtual = data;
+      await carregarFaturas(); // atualiza lista
+      popularDropdownFaturas();
+      renderizarViewer();
+      mostrarTelas("viewer");
+      statusEl.innerHTML = "";
+    } else {
+      throw new Error(`Status ${resp.status}`);
+    }
+  } catch(err) {
+    erroEl.textContent = `Erro inesperado: ${err.message}`;
+    erroEl.style.display = "block";
+    statusEl.innerHTML = "";
+  } finally {
+    btnEnviar.disabled = false;
+  }
+};
+
+// Dropdown da barra superior
+document.getElementById("fatura-selecionada").onclick = function() {
+  const opts = document.getElementById("fatura-options");
+  opts.classList.toggle("show");
+};
+
+// Fechar dropdown ao clicar fora
+document.addEventListener("click", function(e) {
+  const dd = document.getElementById("fatura-options");
+  const selected = document.getElementById("fatura-selecionada");
+  if (dd && !dd.contains(e.target) && !selected.contains(e.target)) {
+    dd.classList.remove("show");
+  }
+});
+
+// ===== Render viewer =====
+function renderizarViewer() {
+  if (!faturaAtual) return;
+
+  // Header cards
+  const hc = document.getElementById("header-cards");
+  hc.innerHTML = `
+    <div class="header-card"><div class="label">Fechamento</div><div class="value">${formatarData(faturaAtual.fechamento)}</div></div>
+    <div class="header-card"><div class="label">Vencimento</div><div class="value">${formatarData(faturaAtual.vencimento)}</div></div>
+    <div class="header-card total"><div class="label">Total a pagar</div><div class="value">${formatarMoeda(faturaAtual.total_a_pagar)}</div></div>
+    <div class="header-card"><div class="label">Pagamento mínimo</div><div class="value">${formatarMoeda(faturaAtual.pagamento_minimo)}</div></div>
+  `;
+
+  // Popular selects uma vez por fatura
+  if (!selectsPopulados) {
+    popularSelects();
+    selectsPopulados = true;
+  }
+
+  // Aplicar filtros iniciais
+  aplicarFiltros();
+}
+
+// ===== Popular selects de filtro (apenas uma vez por fatura) =====
+function popularSelects() {
+  const todas = faturaAtual.transacoes;
+
+  // Categoria
+  const cats = [...new Set(todas.map(t => t.categoria || "—"))].sort();
+  const catSelEl = document.getElementById("filtro-categoria");
+  catSelEl.innerHTML = '<option value="">Todas</option>' +
+    cats.map(c => `<option value="${c}">${c}</option>`).join("");
+
+  // Cartão
+  const cartoes = [...new Set(todas.map(t => t.cartao || ""))].filter(c => c).sort();
+  const cartSelEl = document.getElementById("filtro-cartao");
+  cartSelEl.innerHTML = '<option value="">Todos</option>' +
+    cartoes.map(c => `<option value="${c}">${c}</option>`).join("");
+}
+
+// ===== Aplicar filtros =====
+function aplicarFiltros() {
+  // FIX: nao repopula selects — so le os valores
+  const busca = (document.getElementById("filtro-busca").value || "").toLowerCase();
+  const catSel = document.getElementById("filtro-categoria").value;
+  const cartSel = document.getElementById("filtro-cartao").value;
+
+  const todas = faturaAtual.transacoes;
+
+  // Filtrar
+  transacoesFiltradas = todas.filter(t => {
+    const desc = (t.descricao || "").toLowerCase();
+    const matchBusca = !busca || desc.includes(busca);
+    const matchCat = !catSel || (t.categoria || "—") === catSel;
+    const matchCart = !cartSel || t.cartao === cartSel;
+    return matchBusca && matchCat && matchCart;
+  });
+
+  // FIX: nao reseta sortConfig aqui — preserva a ordenacao do usuario
+  renderizarTabela();
+}
+
+// ===== Render tabela =====
+function renderizarTabela() {
+  const thead = document.getElementById("table-thead");
+  const tbody = document.getElementById("table-tbody");
+  const footer = document.getElementById("table-footer");
+  const catLista = document.getElementById("categoria-lista");
+
+  const cols = [
+    {key:"data", label:"Data"},
+    {key:"descricao", label:"Descrição"},
+    {key:"cartao", label:"Cartão"},
+    {key:"parcela", label:"Parcela"},
+    {key:"categoria", label:"Categoria"},
+    {key:"valor", label:"Valor"},
+  ];
+
+  thead.innerHTML = cols.map(c => {
+    const cls = (c.key === "data" || c.key === "valor") ? "sortable" : "";
+    const sorted = c.key === sortConfig.key ? `sorted-${sortConfig.dir}` : "";
+    return `<th class="${cls} ${sorted}" data-key="${c.key}">${c.label}</th>`;
+  }).join("");
+
+  // Ordenar
+  const sorted = [...transacoesFiltradas].sort((a, b) => {
+    let av = a[sortConfig.key], bv = b[sortConfig.key];
+    if (sortConfig.key === "valor") { av = parseFloat(av); bv = parseFloat(bv); }
+    if (sortConfig.key === "data") { av = av || ""; bv = bv || ""; }
+    if (av < bv) return sortConfig.dir === 'asc' ? -1 : 1;
+    if (av > bv) return sortConfig.dir === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  tbody.innerHTML = sorted.map(t => {
+    const valor = parseFloat(t.valor);
+    const isNeg = valor < 0;
+    const valorStr = formatarMoeda(t.valor);
+    const cat = t.categoria || "—";
+    let catHtml = "";
+    if (t.categoria) {
+      catHtml = `<span class="badge badge-categoria" style="background:${corCategoria(t.categoria)}20; color:${corCategoria(t.categoria)}">${cat}</span>`;
+    } else {
+      catHtml = `<span class="badge badge-categoria" style="background:rgba(148,163,184,0.3); color:#94a3b8">—</span>`;
+    }
+
+    return `<tr>
+      <td>${formatarData(t.data)}</td>
+      <td>${t.descricao || ""}</td>
+      <td>${t.cartao || "—"}</td>
+      <td><span class="badge badge-parcela">${formatarParcela(t.parcela_atual, t.parcela_total)}</span></td>
+      <td>${catHtml}</td>
+      <td class="${isNeg ? 'valor-negativo' : 'valor-positivo'}">${valorStr}</td>
+    </tr>`;
+  }).join("");
+
+  // Footer
+  const soma = transacoesFiltradas.reduce((acc, t) => acc + parseFloat(t.valor), 0);
+  const somaStr = formatarMoeda(soma);
+  footer.innerHTML = `
+    <span>${transacoesFiltradas.length} de ${faturaAtual.transacoes.length} transações exibidas</span>
+    <span>Soma: ${somaStr}</span>
+  `;
+
+  // Totais por categoria (débitos)
+  const porCat = {};
+  transacoesFiltradas.forEach(t => {
+    if (parseFloat(t.valor) > 0) {
+      const c = t.categoria || "—";
+      porCat[c] = (porCat[c] || 0) + parseFloat(t.valor);
+    }
+  });
+  const catEntries = Object.entries(porCat).sort((a,b) => b[1] - a[1]);
+  const max = catEntries[0]?.[1] || 0;
+  catLista.innerHTML = catEntries.map(([cat, val]) => {
+    const pct = max > 0 ? Math.round((val / max) * 100) : 0;
+    return `<div class="categoria-item">
+      <span class="cat-name">${cat}</span>
+      <div class="cat-bar-container"><div class="cat-bar" style="width:${pct}%; background:${corCategoria(cat)}"></div></div>
+      <span class="cat-valor">${formatarMoeda(val)}</span>
+    </div>`;
+  }).join("");
+}
+
+// ===== Sortable headers =====
+document.getElementById("table-thead").onclick = function(e) {
+  if (e.target.tagName === "TH" && e.target.classList.contains("sortable")) {
+    const key = e.target.getAttribute("data-key");
+    if (sortConfig.key === key) {
+      sortConfig.dir = sortConfig.dir === 'asc' ? 'desc' : 'asc';
+    } else {
+      sortConfig.key = key;
+      sortConfig.dir = 'asc';
+    }
+    aplicarFiltros(); // re-renderiza com nova ordenação
+  }
+};
+
+// ===== Filtros em tempo real =====
+document.getElementById("filtro-busca").oninput = aplicarFiltros;
+document.getElementById("filtro-categoria").onchange = aplicarFiltros;
+document.getElementById("filtro-cartao").onchange = aplicarFiltros;
+
+// Init
+init();
+</script>
+</body>
+</html>
