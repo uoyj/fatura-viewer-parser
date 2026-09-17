@@ -677,14 +677,27 @@ document.getElementById("form-upload").onsubmit = async function(e) {
 
   try {
     const resp = await fetch("/faturas", { method: "POST", body: formData });
-    const data = await resp.json();
+    const text = await resp.text();
+
+    // Só tenta JSON.parse se content-type for application/json
+    const contentType = resp.headers.get("content-type") || "";
+    const isJSON = contentType.includes("application/json");
+
+    let data = null;
+    if (isJSON) {
+      try {
+        data = JSON.parse(text);
+      } catch(e) {
+        // JSON mal formado
+      }
+    }
 
     if (resp.status === 422) {
-      const erro = data.erro || JSON.stringify(data);
+      const erro = (data && data.erro) || `Erro do servidor (HTTP ${resp.status}): ${text.substring(0, 200)}`;
       erroEl.textContent = erro;
       erroEl.style.display = "block";
       statusEl.innerHTML = "";
-    } else if (resp.status === 200) {
+    } else if (resp.status === 200 && data) {
       // Sucesso — carrega a fatura
       faturaAtual = data;
       await carregarFaturas(); // atualiza lista
@@ -693,7 +706,11 @@ document.getElementById("form-upload").onsubmit = async function(e) {
       mostrarTelas("viewer");
       statusEl.innerHTML = "";
     } else {
-      throw new Error(`Status ${resp.status}`);
+      // Nao-JSON ou status inesperado — debug remoto
+      const msg = `Erro do servidor (HTTP ${resp.status}): ${text.substring(0, 200)}`;
+      erroEl.textContent = msg;
+      erroEl.style.display = "block";
+      statusEl.innerHTML = "";
     }
   } catch(err) {
     erroEl.textContent = `Erro inesperado: ${err.message}`;

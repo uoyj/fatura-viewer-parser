@@ -1,0 +1,12 @@
+services:
+  fatura-viewer:
+    build: .
+    container_name: fatura-viewer
+    ports:
+      - "8000:8000"
+    volumes:
+      - fatura-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  fatura-data:

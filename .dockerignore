@@ -1,0 +1,38 @@
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Dados gerados em runtime (uploads, faturas persistidas)
+data/
+
+# PDF de exemplo (grande, binario — mantenha local)
+in/
+
+# Git
+.git/
+.gitignore
+
+# Cache Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Testes (nao necessarios no container)
+tests/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
