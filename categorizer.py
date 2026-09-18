@@ -24,7 +24,7 @@ REGRAS: list[tuple[str, list[str]]] = [
     ("Farmacia", ["RAIA DROGASIL", "DROGASIL", "PANVEL"]),
     ("Veterinario", ["CLINICA VETERINARIA"]),
     ("Saude/Podologia", ["PODOMAX", "IL BARBUTO"]),
-    ("Transporte/Apps", ["99FOOD", "99*"]),
+    ("Transporte/Apps", ["99FOOD", "99*", "99app", "99app *99app", "Dl*Uberrides"]),
     ("Restaurante/Cafe", [
         "NONO CAFE", "NONOCAFE", "4BEANS", "BEANSCOFFEE",
         "BOCCA LUPO", "BOCCALUPO", "EAT ME", "EATME",
