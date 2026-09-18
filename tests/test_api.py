@@ -39,6 +39,9 @@ def client(tmp_path, monkeypatch):
     # Redireciona uploads e jsonl para diretorios temporarios
     monkeypatch.setattr(api, "UPLOADS_DIR", tmp_path / "uploads")
     monkeypatch.setattr(api, "JSONL_PATH", tmp_path / "faturas.jsonl")
+    # Regras/overrides de categorizacao tambem (upload categoriza as transacoes)
+    monkeypatch.setattr(api, "CATEGORIAS_PATH", tmp_path / "categorias.json")
+    monkeypatch.setattr(api, "OVERRIDES_PATH", tmp_path / "overrides.json")
     api.UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
     return TestClient(app)

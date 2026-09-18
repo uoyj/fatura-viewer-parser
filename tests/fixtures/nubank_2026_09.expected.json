@@ -7,6 +7,7 @@
   "pagamento_minimo": "34.68",
   "transacoes": [
     {
+      "id": 0,
       "data": "2026-08-12",
       "descricao": "Uneedservicos",
       "valor": "7.18",
@@ -17,6 +18,7 @@
       "cartao": "·8188"
     },
     {
+      "id": 1,
       "data": "2026-08-12",
       "descricao": "Dl*Uberrides",
       "valor": "33.23",
@@ -27,6 +29,7 @@
       "cartao": "·3528"
     },
     {
+      "id": 2,
       "data": "2026-08-15",
       "descricao": "Dl*Uberrides",
       "valor": "24.68",
@@ -37,6 +40,7 @@
       "cartao": "·3528"
     },
     {
+      "id": 3,
       "data": "2026-08-18",
       "descricao": "99app *99app",
       "valor": "27.00",
@@ -47,6 +51,7 @@
       "cartao": "·8188"
     },
     {
+      "id": 4,
       "data": "2026-08-18",
       "descricao": "99app *99app",
       "valor": "21.90",
@@ -57,6 +62,7 @@
       "cartao": "·8188"
     },
     {
+      "id": 5,
       "data": "2026-08-18",
       "descricao": "99app *99app",
       "valor": "15.00",
@@ -67,6 +73,7 @@
       "cartao": "·8188"
     },
     {
+      "id": 6,
       "data": "2026-08-20",
       "descricao": "99app *99app",
       "valor": "17.73",
@@ -77,6 +84,7 @@
       "cartao": "·8188"
     },
     {
+      "id": 7,
       "data": "2026-08-21",
       "descricao": "99app *99app",
       "valor": "28.80",
@@ -87,6 +95,7 @@
       "cartao": "·8188"
     },
     {
+      "id": 8,
       "data": "2026-08-26",
       "descricao": "99app *99app",
       "valor": "25.80",
@@ -97,6 +106,7 @@
       "cartao": "·8188"
     },
     {
+      "id": 9,
       "data": "2026-08-27",
       "descricao": "Dl*Uberrides",
       "valor": "29.94",
@@ -107,6 +117,7 @@
       "cartao": "·3528"
     },
     {
+      "id": 10,
       "data": "2026-08-09",
       "descricao": "Pagamento em 09 AGO",
       "valor": "-194.75",

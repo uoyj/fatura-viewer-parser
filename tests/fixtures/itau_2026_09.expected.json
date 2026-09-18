@@ -7,6 +7,7 @@
   "pagamento_minimo": "194.08",
   "transacoes": [
     {
+      "id": 0,
       "data": "2026-08-03",
       "descricao": "Pagamento via conta",
       "valor": "-2111.00",
@@ -17,6 +18,7 @@
       "cartao": "3620"
     },
     {
+      "id": 1,
       "data": "2026-08-11",
       "descricao": "DROGARIAS NISSEICURITIB",
       "valor": "454.21",
@@ -27,6 +29,7 @@
       "cartao": "3620"
     },
     {
+      "id": 2,
       "data": "2026-08-11",
       "descricao": "FARMACIA E DROGARIA NIC",
       "valor": "89.91",
@@ -37,6 +40,7 @@
       "cartao": "3620"
     },
     {
+      "id": 3,
       "data": "2026-08-11",
       "descricao": "MP *ROSEDORPERFUMOSASCO",
       "valor": "38.00",
@@ -47,6 +51,7 @@
       "cartao": "3620"
     },
     {
+      "id": 4,
       "data": "2026-08-13",
       "descricao": "Uber UBER *TRIP HELP.US",
       "valor": "10.46",
@@ -57,6 +62,7 @@
       "cartao": "3620"
     },
     {
+      "id": 5,
       "data": "2026-03-09",
       "descricao": "FARMACIA DRO*N",
       "valor": "34.40",
@@ -67,6 +73,7 @@
       "cartao": "3620"
     },
     {
+      "id": 6,
       "data": "2026-08-13",
       "descricao": "Uber UBER *TRIP HELP.US",
       "valor": "3.00",
@@ -77,6 +84,7 @@
       "cartao": "3620"
     },
     {
+      "id": 7,
       "data": "2026-06-03",
       "descricao": "JIM.COM* IBUY",
       "valor": "476.28",
@@ -87,6 +95,7 @@
       "cartao": "3620"
     },
     {
+      "id": 8,
       "data": "2026-08-13",
       "descricao": "Uber UBER *TRIP HELP.US",
       "valor": "8.96",
@@ -97,6 +106,7 @@
       "cartao": "3620"
     },
     {
+      "id": 9,
       "data": "2026-07-05",
       "descricao": "FILIAL 523 CTB",
       "valor": "35.54",
@@ -107,6 +117,7 @@
       "cartao": "3620"
     },
     {
+      "id": 10,
       "data": "2026-08-13",
       "descricao": "JULIANA PAULA FARIASCUR",
       "valor": "90.00",
@@ -117,6 +128,7 @@
       "cartao": "3620"
     },
     {
+      "id": 11,
       "data": "2026-07-07",
       "descricao": "FILIAL 523 CTB",
       "valor": "34.74",
@@ -127,6 +139,7 @@
       "cartao": "3620"
     },
     {
+      "id": 12,
       "data": "2026-08-13",
       "descricao": "BE HAPPY CWB HEAD SHOPC",
       "valor": "7.00",
@@ -137,6 +150,7 @@
       "cartao": "3620"
     },
     {
+      "id": 13,
       "data": "2026-07-07",
       "descricao": "AMAZONMKTPLC*M",
       "valor": "50.79",
@@ -147,6 +161,7 @@
       "cartao": "3620"
     },
     {
+      "id": 14,
       "data": "2026-08-13",
       "descricao": "R COMENDADOR ARAUJOCASC",
       "valor": "91.83",
@@ -157,6 +172,7 @@
       "cartao": "3620"
     },
     {
+      "id": 15,
       "data": "2026-08-03",
       "descricao": "99*SAO PAULOBRA",
       "valor": "9.30",
@@ -167,6 +183,7 @@
       "cartao": "3620"
     },
     {
+      "id": 16,
       "data": "2026-08-04",
       "descricao": "FILIAL 523 CTB/24CURITI",
       "valor": "89.37",
@@ -177,6 +194,7 @@
       "cartao": "3620"
     },
     {
+      "id": 17,
       "data": "2026-08-04",
       "descricao": "99*SAO PAULOBRA",
       "valor": "12.70",
@@ -187,6 +205,7 @@
       "cartao": "3620"
     },
     {
+      "id": 18,
       "data": "2026-08-05",
       "descricao": "FernandoJoaoVazCURITIBA",
       "valor": "130.00",
@@ -197,6 +216,7 @@
       "cartao": "3620"
     },
     {
+      "id": 19,
       "data": "2026-08-05",
       "descricao": "99*SAO PAULOBRA",
       "valor": "6.48",
@@ -207,6 +227,7 @@
       "cartao": "3620"
     },
     {
+      "id": 20,
       "data": "2026-08-05",
       "descricao": "99*SAO PAULOBRA",
       "valor": "11.20",
@@ -217,6 +238,7 @@
       "cartao": "3620"
     },
     {
+      "id": 21,
       "data": "2026-08-06",
       "descricao": "PG *ZE DELIVERYSAO PAUL",
       "valor": "175.12",
@@ -227,6 +249,7 @@
       "cartao": "3620"
     },
     {
+      "id": 22,
       "data": "2026-08-08",
       "descricao": "Uber UBER *TRIP HELP.US",
       "valor": "17.99",
@@ -237,6 +260,7 @@
       "cartao": "3620"
     },
     {
+      "id": 23,
       "data": "2026-08-08",
       "descricao": "MzEntretenimentoCURITIB",
       "valor": "41.58",
@@ -247,6 +271,7 @@
       "cartao": "3620"
     },
     {
+      "id": 24,
       "data": "2026-08-08",
       "descricao": "Uber UBER *TRIP HELP.US",
       "valor": "21.98",

@@ -19,6 +19,10 @@ class Transacao:
     Uma transação na fatura.
 
     valor: positivo = débito (compra), negativo = crédito (estorno/pagamento)
+
+    id: identificador estável da transação DENTRO da fatura (índice na lista).
+        Preenchido na serialização (fatura_para_dict) quando None; os parsers
+        não precisam se preocupar com ele.
     """
     data: date
     descricao: str
@@ -28,6 +32,7 @@ class Transacao:
     moeda: str = "BRL"
     categoria: Optional[str] = None
     cartao: str = ""
+    id: Optional[int] = None
 
 
 @dataclass
@@ -60,6 +65,10 @@ def fatura_para_dict(fatura: Fatura) -> dict:
     Converte:
     - date → ISO string
     - Decimal → string
+
+    Cada transação recebe "id": índice na lista da fatura (ou o id já
+    atribuído à transação, quando houver — permite round-trip estável de
+    transações já persistidas).
     """
     return {
         "banco": fatura.banco,
@@ -70,6 +79,7 @@ def fatura_para_dict(fatura: Fatura) -> dict:
         "pagamento_minimo": str(fatura.pagamento_minimo),
         "transacoes": [
             {
+                "id": t.id if t.id is not None else i,
                 "data": t.data.isoformat(),
                 "descricao": t.descricao,
                 "valor": str(t.valor),
@@ -79,6 +89,6 @@ def fatura_para_dict(fatura: Fatura) -> dict:
                 "categoria": t.categoria,
                 "cartao": t.cartao,
             }
-            for t in fatura.transacoes
+            for i, t in enumerate(fatura.transacoes)
         ],
     }

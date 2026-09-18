@@ -17,7 +17,20 @@ import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from schemas import Transacao, Fatura
-from categorizer import categorizar, _categorizar_descricao, REGRAS
+from categorizer import categorizar, _categorizar_descricao, SEED_REGRAS
+
+
+@pytest.fixture(autouse=True)
+def _isolar_categorias(tmp_path, monkeypatch):
+    """
+    Nenhum teste toca o data/ real: as regras vêm do seed gravado em tmp_path.
+
+    As regras/overrides agora vivem em JSON editável (data/categorias.json,
+    data/overrides.json), então a fonte precisa ser redirecionada aqui.
+    """
+    import categorizer
+    monkeypatch.setattr(categorizer, "CATEGORIAS_PATH", tmp_path / "categorias.json")
+    monkeypatch.setattr(categorizer, "OVERRIDES_PATH", tmp_path / "overrides.json")
 
 
 # ---------------------------------------------------------------------------
@@ -172,12 +185,22 @@ class TestCategorizacaoIntegrada:
 # ---------------------------------------------------------------------------
 
 class TestRegras:
+    """
+    O dicionário de regras agora vive em data/categorias.json (editável).
 
-    def test_regras_tem_outros_como_fallback(self):
-        """Última regra deve ser 'Outros' com lista vazia."""
-        assert REGRAS[-1] == ("Outros", [])
+    SEED_REGRAS é apenas o valor inicial gravado quando o arquivo não existe —
+    e "Outros" é o fallback implícito do matching, nunca uma regra.
+    """
 
-    def test_regras_ordenadas(self):
-        """Regras específicas vêm antes de 'Outros'."""
-        assert REGRAS[-1][0] == "Outros"
-        assert REGRAS[0][0] == "Pagamento da fatura"
+    def test_seed_sem_outros_como_regra(self):
+        assert all(r["categoria"] != "Outros" for r in SEED_REGRAS)
+
+    def test_seed_ordenado(self):
+        """Regras específicas vêm primeiro (ordem importa: primeira que casa vence)."""
+        assert SEED_REGRAS[0]["categoria"] == "Pagamento da fatura"
+        assert SEED_REGRAS[-1]["categoria"] == "Compras online"
+
+    def test_seed_com_padroes(self):
+        """Toda regra do seed precisa ter pelo menos 1 padrão (validável por PUT /categorias)."""
+        for regra in SEED_REGRAS:
+            assert isinstance(regra["padroes"], list) and regra["padroes"]
