@@ -309,6 +309,28 @@ tr:hover td { background: #0f172a; }
   border: 1px solid rgba(255,255,255,0.1);
   color: var(--text);
 }
+/* Select inline de categoria — mesmo visual de badge, mas ensina (override global) */
+select.badge-categoria {
+  font-family: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  min-width: 120px;
+  max-width: 200px;
+  padding: 1px 6px;
+  vertical-align: middle;
+  outline: 2px solid transparent;   /* reservado: evita layout shift no flash */
+  outline-offset: 1px;
+  transition: outline-color 250ms ease, box-shadow 250ms ease, border-color 250ms ease;
+}
+select.badge-categoria:hover { border-color: rgba(56, 189, 248, 0.5); }
+select.badge-categoria:focus-visible { outline-color: var(--accent); }
+select.badge-categoria:disabled { opacity: 0.55; cursor: progress; }
+/* Feedback "aprendido": outline --accent por ~800ms (classe aplicada apos o re-render) */
+select.badge-categoria.aprendido {
+  outline-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.15);
+}
 .valor-positivo { color: var(--text); font-weight: 500; }
 .valor-negativo { color: var(--green); font-weight: 600; }
 
@@ -566,6 +588,7 @@ let faturaAtual = null;     // fatura carregada (objeto completo)
 let transacoesFiltradas = [];  // transacoes apos filtro+sort
 let sortConfig = { key: "data", dir: 'asc' };
 let selectsPopulados = false;  // controle: popular selects só uma vez por fatura
+let aprendizadoFlash = null;   // { chave, expira } — destaca a célula após re-render
 
 // ===== Utils =====
 function formatarMoeda(v) {
@@ -595,6 +618,24 @@ function corCategoria(nome) {
   return `hsl(${h}, 70%, 45%)`;
 }
 
+function escHtml(s) {
+  return String(s === null || s === undefined ? "" : s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+// MESMO algoritmo de categorizer.normalizar_descricao (backend):
+// upper + colapso de espaços múltiplos em 1 + strip
+function normalizarDescricao(s) {
+  return String(s === null || s === undefined ? "" : s)
+    .replace(/\s+/g, " ")
+    .trim()
+    .toUpperCase();
+}
+
 // ===== API calls =====
 async function apiGET(url) {
   const resp = await fetch(url);
@@ -605,6 +646,24 @@ async function apiGET(url) {
 async function apiDELETE(url) {
   const resp = await fetch(url, { method: 'DELETE' });
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  return resp.json();
+}
+
+async function apiPUT(url, body) {
+  const resp = await fetch(url, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok) {
+    // Erros da API vêm como {"erro": "..."}; 404/HTTPException como {"detail": "..."}
+    let msg = `HTTP ${resp.status}`;
+    try {
+      const j = await resp.json();
+      msg = j.erro || j.detail || msg;
+    } catch (_) { /* corpo não-JSON */ }
+    throw new Error(msg);
+  }
   return resp.json();
 }
 
@@ -911,6 +970,83 @@ function aplicarFiltros() {
   renderizarTabela();
 }
 
+// ===== Ensino de categoria (override global por descrição normalizada) =====
+
+const TOOLTIP_ENSINAR = "Ensinar categoria — vale para todas as faturas";
+
+// Categorias oferecidas no select inline: distintas da fatura (mesma fonte do
+// filtro) + "Outros", ordenadas.
+function categoriasDisponiveis() {
+  const cats = new Set(
+    (faturaAtual?.transacoes || [])
+      .map(t => t.categoria)
+      .filter(c => c && c !== "—")
+  );
+  cats.add("Outros");
+  return [...cats].sort((a, b) => a.localeCompare(b, "pt-BR"));
+}
+
+// Options do select de uma transação, com a categoria atual selecionada.
+// Sem categoria (null) → placeholder "—" desabilitado (não há como voltar a null).
+function opcoesCategoriaSelect(cats, atual) {
+  let html = "";
+  if (!atual) html += '<option value="" selected disabled>—</option>';
+  html += cats.map(c =>
+    `<option value="${escHtml(c)}"${c === atual ? " selected" : ""}>${escHtml(c)}</option>`
+  ).join("");
+  return html;
+}
+
+// Flash "aprendido": lembra a chave para reaplicar a classe após o re-render
+// (o tbody é reconstruído por aplicarFiltros, então a classe se perderia).
+function marcarAprendizado(chave) {
+  aprendizadoFlash = { chave, expira: Date.now() + 800 };
+  setTimeout(() => {
+    if (!aprendizadoFlash || aprendizadoFlash.chave !== chave) return;
+    aprendizadoFlash = null;
+    document.querySelectorAll("select.badge-categoria.aprendido")
+      .forEach(el => el.classList.remove("aprendido"));
+  }, 850);
+}
+
+async function aprenderCategoria(sel) {
+  const anterior = sel.dataset.anterior || "";
+  const nova = sel.value;
+  if (!nova || nova === anterior) return;
+
+  const t = (faturaAtual?.transacoes || []).find(x => String(x.id) === String(sel.dataset.id));
+  if (!t) { sel.value = anterior; return; }
+
+  const chaveLocal = normalizarDescricao(t.descricao);
+
+  sel.disabled = true;
+  let chave = chaveLocal;
+  try {
+    // t.descricao CRUA — o backend normaliza (chave = descricao normalizada)
+    const resp = await apiPUT(`/overrides/${encodeURIComponent(t.descricao)}`, { categoria: nova });
+    if (resp && resp.chave) chave = resp.chave;   // backend é a fonte da verdade
+  } catch (e) {
+    sel.value = anterior;
+    sel.disabled = false;
+    alert(`Não foi possível ensinar a categoria: ${e.message}`);
+    return;
+  }
+
+  // Override é GLOBAL por descrição normalizada: aplica em TODAS as transações
+  // da fatura com a mesma chave (não só na linha clicada).
+  let afetadas = 0;
+  faturaAtual.transacoes.forEach(x => {
+    if (normalizarDescricao(x.descricao) === chave) {
+      x.categoria = nova;
+      afetadas++;
+    }
+  });
+
+  marcarAprendizado(chave);
+  aplicarFiltros();   // re-render: tabela + totais por categoria na hora
+  console.log(`[categoria] "${nova}" ensinada para ${afetadas} transação(ões) — chave "${chave}"`);
+}
+
 // ===== Render tabela =====
 function renderizarTabela() {
   const thead = document.getElementById("table-thead");
@@ -943,17 +1079,23 @@ function renderizarTabela() {
     return 0;
   });
 
+  const catsSelect = categoriasDisponiveis();
+
   tbody.innerHTML = sorted.map(t => {
     const valor = parseFloat(t.valor);
     const isNeg = valor < 0;
     const valorStr = formatarMoeda(t.valor);
-    const cat = t.categoria || "—";
-    let catHtml = "";
-    if (t.categoria) {
-      catHtml = `<span class="badge badge-categoria" style="background:${corCategoria(t.categoria)}20; color:${corCategoria(t.categoria)}">${cat}</span>`;
-    } else {
-      catHtml = `<span class="badge badge-categoria" style="background:rgba(148,163,184,0.3); color:#94a3b8">—</span>`;
-    }
+    // Célula de categoria = <select> inline: mudar aqui ENSINA (override global)
+    const catStyle = t.categoria
+      ? `background:${corCategoria(t.categoria)}20; color:${corCategoria(t.categoria)}`
+      : "background:rgba(148,163,184,0.3); color:#94a3b8";
+    const catHtml = `<select class="badge badge-categoria"
+        data-id="${escHtml(t.id)}"
+        data-anterior="${escHtml(t.categoria || "")}"
+        title="${TOOLTIP_ENSINAR}"
+        aria-label="${TOOLTIP_ENSINAR}"
+        style="${catStyle}"
+        onchange="aprenderCategoria(this)">${opcoesCategoriaSelect(catsSelect, t.categoria)}</select>`;
 
     return `<tr>
       <td>${formatarData(t.data)}</td>
@@ -964,6 +1106,20 @@ function renderizarTabela() {
       <td class="${isNeg ? 'valor-negativo' : 'valor-positivo'}">${valorStr}</td>
     </tr>`;
   }).join("");
+
+  // Flash "aprendido": reaplica a classe nas células da chave ensinada
+  // (o innerHTML acima acabou de recriar os selects, perdendo a classe).
+  if (aprendizadoFlash) {
+    if (aprendizadoFlash.expira > Date.now()) {
+      const alvo = aprendizadoFlash.chave;
+      tbody.querySelectorAll("select.badge-categoria").forEach(sel => {
+        const tx = faturaAtual.transacoes.find(x => String(x.id) === String(sel.dataset.id));
+        if (tx && normalizarDescricao(tx.descricao) === alvo) sel.classList.add("aprendido");
+      });
+    } else {
+      aprendizadoFlash = null;
+    }
+  }
 
   // Footer
   const soma = transacoesFiltradas.reduce((acc, t) => acc + parseFloat(t.valor), 0);
