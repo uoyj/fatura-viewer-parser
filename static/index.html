@@ -456,6 +456,9 @@ html {
   <div class="nav-item" role="link" tabindex="0" aria-label="Por categoria" data-target="sec-categorias">
     <span class="tooltip">Por categoria</span>
   </div>
+  <div class="nav-item" role="link" tabindex="0" aria-label="Projeção" data-target="sec-projecao">
+    <span class="tooltip">Projeção</span>
+  </div>
   <div class="nav-item" role="link" tabindex="0" aria-label="Topo" data-target="topo">
     <span class="tooltip">Topo</span>
   </div>
@@ -542,6 +545,14 @@ html {
     <div class="categoria-section">
       <h3>Totais por categoria (débitos)</h3>
       <div id="categoria-lista"></div>
+    </div>
+  </section>
+
+  <!-- Projeção de Parcelas Futuras -->
+  <section id="sec-projecao">
+    <div class="categoria-section">
+      <h3>Projeção para próximas faturas <small style="color:var(--muted);font-weight:400">(estimada — valores e datas podem variar)</small></h3>
+      <div id="projecao-lista"></div>
     </div>
   </section>
 </section>
@@ -980,6 +991,102 @@ function renderizarTabela() {
       <span class="cat-valor">${formatarMoeda(val)}</span>
     </div>`;
   }).join("");
+
+  // Projeção de parcelas futuras (usa sempre todas as transacoes da fatura)
+  projetarParcelas();
+}
+
+// ===== Projeção de Parcelas Futuras =====
+function projetarParcelas() {
+  const lista = document.getElementById("projecao-lista");
+  if (!faturaAtual || !faturaAtual.transacoes) {
+    lista.innerHTML = "";
+    return;
+  }
+
+  const fechamento = faturaAtual.fechamento;
+  if (!fechamento) {
+    lista.innerHTML = '<span style="color:var(--muted);font-size:0.85rem;">Sem data de fechamento para projeção.</span>';
+    return;
+  }
+
+  const base = new Date(fechamento + "T12:00:00");
+  const porMes = {}; // { "AAAA-MM": { mesLabel, total, linhas: [{...}] } }
+
+  faturaAtual.transacoes.forEach(t => {
+    const pa = parseInt(t.parcela_atual);
+    const pt = parseInt(t.parcela_total);
+    const val = parseFloat(t.valor);
+
+    if (pa != null && pt != null && pa > 0 && pa < pt && val > 0) {
+      const restantes = pt - pa;
+      const cap = Math.min(restantes, 12);
+
+      for (let k = 1; k <= cap; k++) {
+        const d = new Date(base.getTime());
+        d.setMonth(d.getMonth() + k);
+
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, "0");
+        const key = `${y}-${m}`;
+        const label = `${m}/${y}`;
+
+        if (!porMes[key]) {
+          porMes[key] = { mesLabel: label, total: 0, linhas: [] };
+        }
+
+        porMes[key].total += val;
+        porMes[key].linhas.push({
+          descricao: t.descricao || "",
+          cartao: t.cartao || "",
+          parcela: `${pa + k}/${pt}`,
+          valor: val
+        });
+      }
+    }
+  });
+
+  const chaves = Object.keys(porMes).sort();
+
+  if (chaves.length === 0) {
+    lista.innerHTML = '<span style="color:var(--muted);font-size:0.85rem;">Sem parcelas pendentes para próximas faturas.</span>';
+    return;
+  }
+
+  // Max total para barra proporcional
+  let maxTotal = 0;
+  chaves.forEach(k => { if (porMes[k].total > maxTotal) maxTotal = porMes[k].total; });
+
+  lista.innerHTML = chaves.map((k, idx) => {
+    const bloco = porMes[k];
+    const pct = maxTotal > 0 ? Math.round((bloco.total / maxTotal) * 100) : 0;
+    const detalhesHtml = bloco.linhas
+      .sort((a, b) => b.valor - a.valor)
+      .map(l => `
+        <div class="projecao-linha" style="display:none;font-size:0.8rem;color:var(--muted);padding-left:16px;border-bottom:1px solid var(--border);">
+          <span>${l.descricao}</span>
+          <span style="float:right">${l.cartao} · parcela ${l.parcela} · ${formatarMoeda(l.valor)}</span>
+        </div>`).join("");
+
+    const expanded = idx === 0 ? 'block' : 'none';
+
+    return `
+      <div class="categoria-item" style="cursor:pointer" onclick="toggleProjecao(this)">
+        <span class="cat-name">${bloco.mesLabel}</span>
+        <div class="cat-bar-container" style="flex:1"><div class="cat-bar" style="width:${pct}%;background:${corCategoria(bloco.mesLabel)};"></div></div>
+        <span class="cat-valor">${formatarMoeda(bloco.total)}</span>
+      </div>
+      <div class="projecao-detalhes" style="display:${expanded}">
+        ${detalhesHtml}
+      </div>`;
+  }).join("");
+}
+
+function toggleProjecao(bloco) {
+  const detalhes = bloco.nextElementSibling;
+  if (!detalhes) return;
+  const expanded = detalhes.style.display === 'none' || detalhes.style.display === '';
+  detalhes.style.display = expanded ? 'block' : 'none';
 }
 
 // ===== Sortable headers =====
@@ -1007,7 +1114,7 @@ document.getElementById("filtro-cartao").onchange = aplicarFiltros;
   if (!nav) return;
 
   const items = nav.querySelectorAll(".nav-item");
-  const sections = ["sec-resumo", "sec-transacoes", "sec-categorias"];
+  const sections = ["sec-resumo", "sec-transacoes", "sec-categorias", "sec-projecao"];
 
   // --- IntersectionObserver para scroll-spy ---
   let scrollIntencional = false;
