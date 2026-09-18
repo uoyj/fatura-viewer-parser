@@ -1,0 +1,220 @@
+{
+  "banco": "nubank",
+  "modelo": "2026-09",
+  "fechamento": "2026-09-15",
+  "vencimento": "2026-09-22",
+  "total_a_pagar": "1577.25",
+  "pagamento_minimo": "236.58",
+  "transacoes": [
+    {
+      "data": "2026-08-15",
+      "descricao": "Filial 523 Ctb/24",
+      "valor": "32.12",
+      "parcela_atual": 2,
+      "parcela_total": 3,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "·5118"
+    },
+    {
+      "data": "2026-08-15",
+      "descricao": "Panvel Filial",
+      "valor": "77.85",
+      "parcela_atual": 2,
+      "parcela_total": 3,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "·5118"
+    },
+    {
+      "data": "2026-08-15",
+      "descricao": "Hna*Oboticario",
+      "valor": "18.68",
+      "parcela_atual": 7,
+      "parcela_total": 12,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "·5118"
+    },
+    {
+      "data": "2026-08-15",
+      "descricao": "Panvel Filial",
+      "valor": "79.58",
+      "parcela_atual": 3,
+      "parcela_total": 3,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "·5118"
+    },
+    {
+      "data": "2026-08-16",
+      "descricao": "Panvel Filial",
+      "valor": "38.39",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "·5118"
+    },
+    {
+      "data": "2026-08-20",
+      "descricao": "Farmacia Dro*Nissei*85",
+      "valor": "35.96",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "·5065"
+    },
+    {
+      "data": "2026-08-20",
+      "descricao": "Farmacia e Drogaria Ni",
+      "valor": "122.47",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "·5118"
+    },
+    {
+      "data": "2026-08-20",
+      "descricao": "Il Barbuto",
+      "valor": "178.10",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "·5118"
+    },
+    {
+      "data": "2026-08-22",
+      "descricao": "Uber Uber *Trip Help.U",
+      "valor": "7.63",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "·5118"
+    },
+    {
+      "data": "2026-08-23",
+      "descricao": "Chq Curitiba",
+      "valor": "23.00",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "·5118"
+    },
+    {
+      "data": "2026-08-24",
+      "descricao": "Apple.Com/Bill",
+      "valor": "26.90",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "·5065"
+    },
+    {
+      "data": "2026-08-26",
+      "descricao": "Uber Uber *Trip Help.U",
+      "valor": "8.72",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "·5118"
+    },
+    {
+      "data": "2026-08-26",
+      "descricao": "Be Happy Cwb Head Shop",
+      "valor": "5.50",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "·5118"
+    },
+    {
+      "data": "2026-08-26",
+      "descricao": "R Comendador Araujo",
+      "valor": "280.48",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "·5118"
+    },
+    {
+      "data": "2026-08-26",
+      "descricao": "Mp *Rosedorperfum",
+      "valor": "88.00",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "·5118"
+    },
+    {
+      "data": "2026-08-28",
+      "descricao": "Farmacia Dro*Nissei*87",
+      "valor": "28.59",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "·5065"
+    },
+    {
+      "data": "2026-08-28",
+      "descricao": "Farmacia e Drogaria Ni",
+      "valor": "239.83",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "·5118"
+    },
+    {
+      "data": "2026-08-28",
+      "descricao": "Farmacia Dro*Nissei*87",
+      "valor": "35.14",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "·5065"
+    },
+    {
+      "data": "2026-09-02",
+      "descricao": "Douglas Pereira da Sil",
+      "valor": "88.40",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "·5118"
+    },
+    {
+      "data": "2026-09-02",
+      "descricao": "Transporte",
+      "valor": "30.00",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "·5118"
+    },
+    {
+      "data": "2026-08-15",
+      "descricao": "Pagamento em 15 AGO",
+      "valor": "-2720.43",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": ""
+    }
+  ]
+}

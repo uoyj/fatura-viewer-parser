@@ -5,16 +5,18 @@ Arquitetura seguida da mesma do sofisa_2026_09:
 - Parser recebe o output do extractor (pages), nunca lê PDF diretamente.
 - Header extraído de múltiplas páginas (page 1 para vencimento/fechamento,
   page 4/RESUMO para saldo_anterior/creditos/debitos/total_a_pagar).
-- Transações extraídas da página 5 (seção "TRANSAÇÕES DE 02 AGO A 02 SET").
+- Transações extraídas da página de "TRANSAÇÕES" — pode ocupar mais de uma
+  página (hoje, páginas 5 e 6).
 - Validação por equação do header + soma global das transações.
 
-Layout do Nubank (fatura 09SET2026):
+Layout do Nubank (fatura 09SET2026 / 22SET2026):
 - Page 1: header básico — "Data de vencimento: 09 SET 2026", "Período vigente: 02 AGO a 02 SET"
 - Page 4: "RESUMO DA FATURA ATUAL" — "Fatura anterior R$ 194,75",
-  "Pagamento recebido −R$ 194,75" (U+2212), "Total a pagar R$ 231,26",
-  "Pagamento mínimo... R$ 34,68"
-- Page 5: "TRANSAÇÕES DE 02 AGO A 02 SET" — tabela de compras seguida de
-  "Pagamentos e Financiamentos".
+  "Pagamento recebido −R$ 194,75" (U+2212), "Total de compras... R$ 231,26",
+  "Outros lançamentos R$ 131,91" (campo novo — nem toda fatura tem),
+  "Total a pagar R$ 231,26", "Pagamento mínimo... R$ 34,68"
+- Page 5+: "TRANSAÇÕES DE 15 AGO A 15 SET" — tabela de compras seguida de
+  "Pagamentos e Financiamentos". Pode estender para a página seguinte.
 
 Diferenças do layout vs sofisa:
 - Cartões identificados por "•••• 8188" / "•••• 3528" (não formato mascarado 4563**)
@@ -22,6 +24,7 @@ Diferenças do layout vs sofisa:
 - Sinal negativo usa U+2212 (−), não hífen ASCII — normalizar antes de parsear
 - Data das transações: "12 AGO" (DD + MMM abreviado em maiúsculas)
 - Layout: cartão+descricao+valor em uma linha, data na linha seguinte (mesmo top)
+- Parcelamento "Parcela N/M" embutido na descrição (novo formato)
 """
 
 from __future__ import annotations
@@ -59,7 +62,7 @@ RE_PERIODO_VIGENTE = re.compile(
 )
 
 # Cartão: linha com símbolos (bullets) + 4 dígitos no início
-RE_CARTAO_NUBANK = re.compile(r"[^0-9a-zA-Z]{0,4}(\d{4})\b")
+RE_CARTAO_NUBANK = re.compile(r"(?<![0-9A-Za-z])[•·]+\s*(\d{4})")
 
 # Valor monetário: "R$ 7,18", "R$ 231,26", "−R$ 194,75", "-R$ 194,75"
 RE_VALOR_R = re.compile(r"R\$\s*([\d.]+,\d{2})")
@@ -75,6 +78,14 @@ RE_TOTAL_A_PAGAR = re.compile(r"Total a pagar\s*R\$\s*([\d.]+,\d{2})")
 
 # "Pagamento mínimo para não ficar em atraso R$ 34,68"
 RE_PAGAMENTO_MINIMO = re.compile(r"Pagamento mínimo[^R$]*R\$\s*([\d.]+,\d{2})")
+
+# "Outros lançamentos R$ 131,91" (novo campo — nem toda fatura tem).
+# O PDF usa "lançamentos" (cedilha + ã) ou, em textos normalizados,
+# "lancamentos" (c + a). Tolerar ambas as grafias: [cç][aã]mentos.
+RE_OUTROS = re.compile(r"Outros lan[cç][aã]mentos\s*R\$\s*([\d.]+,\d{2})")
+
+# Parcelamento: "Parcela 2/3", "Parcela 7/12"
+RE_PARCELA = re.compile(r"Parcela\s*(\d+)\s*/\s*(\d+)")
 
 
 class ParserError(Exception):
@@ -132,10 +143,11 @@ def _extract_header(pages: list[dict]) -> dict:
     Page 1: vencimento ("Data de vencimento: 09 SET 2026") + fechamento
     ("Período vigente: 02 AGO a 02 SET").
     Page 4 (RESUMO): saldo_anterior, creditos (negativo), debitos,
-    total_a_pagar, pagamento_minimo.
+    outros_lancamentos (campo novo), total_a_pagar, pagamento_minimo.
 
-    Equação: saldo_anterior - creditos + debitos = total_a_pagar
-    (ex: 194.75 - 194.75 + 231.26 = 231.26)
+    Equação: saldo_anterior - creditos + debitos + outros = total_a_pagar
+    (ex: 2720.43 - 2720.43 + 1445.34 + 131.91 = 1577.25)
+    Faturas sem "Outros lançamentos": outros assume 0.
     """
     texto_page1 = " ".join(l["text"] for l in pages[0]["lines"])
     texto_page4 = " ".join(l["text"] for l in pages[3]["lines"])
@@ -181,26 +193,53 @@ def _extract_header(pages: list[dict]) -> dict:
     if m:
         debitos = _parse_valor(m.group(1))
 
-    # --- Total a pagar ---
+    # --- Total a pagar --
     total_a_pagar = None
     m = RE_TOTAL_A_PAGAR.search(texto_completo)
     if m:
         total_a_pagar = _parse_valor(m.group(1))
 
-    # Se débitos não foi encontrado, mas temos total + saldo_anterior + creditos
-    if debitos is None and total_a_pagar is not None and saldo_anterior is not None and creditos is not None:
-        debitos = total_a_pagar - saldo_anterior + creditos
+    # Fallback: "Pagamento total da fatura R$ X,XX" (pode estar na página 2)
+    if total_a_pagar is None:
+        m = re.search(r"Pagamento total da fatura\s*R\$\s*([\d.]+,\d{2})",
+                      " ".join(l["text"] for p in pages for l in p["lines"]))
+        if m:
+            total_a_pagar = _parse_valor(m.group(1))
+            logger.warning("total_a_pagar via 'Pagamento total da fatura' (pag 2)")
 
-    # --- Pagamento mínimo ---
+    # --- Outros lançamentos (campo novo — nem toda fatura tem) ---
+    # "Outros lançamentos R$ 131,91"
+    outros = Decimal(0)
+    m = RE_OUTROS.search(texto_completo)
+    if m:
+        outros = _parse_valor(m.group(1))
+    else:
+        logger.warning("campo 'Outros lancamentos' não encontrado — assume R$ 0,00")
+
+    # Se débitos não foi encontrado, mas temos total + saldo_anterior + creditos
+    # Equação: saldo_anterior - creditos + debitos + outros = total_a_pagar
+    # → debitos = total_a_pagar - saldo_anterior + creditos - outros
+    if debitos is None and total_a_pagar is not None and saldo_anterior is not None and creditos is not None:
+        debitos = total_a_pagar - saldo_anterior + creditos - outros
+
+    # --- Pagamento mínimo --
     pagamento_minimo = None
     m = RE_PAGAMENTO_MINIMO.search(texto_completo)
     if m:
         pagamento_minimo = _parse_valor(m.group(1))
 
+    # Fallback: "Pagamento minimo de R$ X,XX" em todas as páginas
+    if pagamento_minimo is None:
+        m = re.search(r"Pagamento m[ií]nimo de\s*R\$\s*([\d.]+,\d{2})",
+                      " ".join(l["text"] for p in pages for l in p["lines"]))
+        if m:
+            pagamento_minimo = _parse_valor(m.group(1))
+
     return {
         "saldo_anterior": saldo_anterior,
         "creditos": creditos,
         "debitos": debitos,
+        "outros": outros,
         "total_a_pagar": total_a_pagar,
         "pagamento_minimo": pagamento_minimo,
         "fechamento": fechamento,
@@ -209,7 +248,7 @@ def _extract_header(pages: list[dict]) -> dict:
 
 
 # --------------------------------------------------------------------------
-# Transações (page 5)
+# Transações (page 5, pode estender para páginas seguintes)
 # --------------------------------------------------------------------------
 
 # Linhas que marcam o fim das transações
@@ -223,10 +262,20 @@ def _extract_transacoes(pages: list[dict]) -> list[Transacao]:
     Lista plana de transações da página de "TRANSAÇÕES".
 
     Layout tolerante a duas variações:
-    - "12 AGO ·8188 Uneedservicos R$ 7,18" (tudo na mesma linha)
-    - "·8188 Uneedservicos R$ 7,18" + data na linha seguinte
+    - "12 AGO •8188 Uneedservicos R$ 7,18" (tudo na mesma linha)
+    - "•8188 Uneedservicos R$ 7,18" + data na linha seguinte
+
+    A página de transações pode ocupar mais de uma página (fatura 22SET2026:
+    páginas 5 e 6). Processa a primeira página com "TRANSAÇÕES" até o FIM
+    do documento, concatenando as linhas das páginas seguintes na mesma
+    máquina de estados. O marcador de início dispara uma só vez; nas páginas
+    seguintes o cabeçalho repetido ("TRANSAÇÕES DE ...", titular, "Xde 6",
+    parágrafo SCR) não tem valor R$ e é pulado naturalmente.
+
     Classificação por palavra: data (DD MMM), cartão (bullets+4 dígitos),
-    valor (R$ x), resto = descrição.
+    valor (R$ x), resto = descrição. Parcelamento "Parcela N/M" extraído
+    e removido da descrição. Data DD MMM inicial também removida da
+    descrição quando grudada nela.
     """
     transacoes: list[Transacao] = []
 
@@ -239,17 +288,24 @@ def _extract_transacoes(pages: list[dict]) -> list[Transacao]:
     def ano_de(mes: int) -> int:
         return ano_ref - 1 if mes > mes_fechamento else ano_ref
 
-    page_transacoes = None
-    for page in pages:
+    # --- Localiza a primeira página com "TRANSAÇÕES DE" ---
+    start_idx = None
+    for idx, page in enumerate(pages):
         texto = " ".join(l["text"] for l in page["lines"])
-        # A página de transações tem "TRANSAÇÕES" + "DE" (período) + tabela de compras
-        if "TRANSAÇÕES" in texto and ("DE " in texto or "DE 02" in texto):
-            page_transacoes = page
+        # A página de transações tem o cabeçalho "TRANSAÇÕES DE <período>".
+        # Usa "TRANSAÇÕES DE" (e não só "TRANSAÇÕES") para não confundir com
+        # "VALOR MÁXIMO PARA TRANSAÇÕES" (page 4, LIMITES).
+        if "TRANSAÇÕES DE" in texto:
+            start_idx = idx
             break
-    if page_transacoes is None:
+    if start_idx is None:
         raise ParserError("Página de transações não encontrada")
 
-    lines = page_transacoes["lines"]
+    # --- Concatena as lines de todas as páginas a partir de start_idx ---
+    lines: list[dict] = []
+    for idx in range(start_idx, len(pages)):
+        lines.extend(pages[idx]["lines"])
+
     cartao_atual = ""
     modo_pagamentos = False
     inicio = False
@@ -260,6 +316,9 @@ def _extract_transacoes(pages: list[dict]) -> list[Transacao]:
             i += 1
             continue
         if not inicio:
+            # O marcador "TRANSAÇÕES" só dispara uma vez; cabeçalhos repetidos
+            # nas páginas seguintes ("TRANSAÇÕES DE 15 AGO A 15 SET", titular,
+            # "6de 6", parágrafo SCR) não têm valor R$ e são pulados naturalmente.
             if "TRANSAÇÕES" in text:
                 inicio = True
             i += 1
@@ -310,7 +369,7 @@ def _extract_transacoes(pages: list[dict]) -> list[Transacao]:
             continue
 
         # ---- Extração por regex na linha inteira ----
-        # Layout: "... •8188 descricao R$ 7,18" (ou "12 AGO ·8188 descricao R$ 7,18")
+        # Layout: "... •8188 descricao R$ 7,18" (ou "12 AGO •8188 descricao R$ 7,18")
         # O "R$" e o valor podem ser tokens separados no split(), entao usa-se regex no texto
         m_valor = RE_VALOR_R.search(text)
         m_cartao = RE_CARTAO_NUBANK.search(text)
@@ -319,9 +378,11 @@ def _extract_transacoes(pages: list[dict]) -> list[Transacao]:
             i += 1
             continue  # linha sem valor: header/lixo
 
-        # Cartão (se existir)
-        if m_cartao:
+        # Cartão (se existir) — ignora match que seja um ano (19xx/20xx)
+        if m_cartao and not (1900 <= int(m_cartao.group(1)) <= 2099):
             cartao_atual = "·" + m_cartao.group(1)
+        else:
+            m_cartao = None
 
         # Descrição: tudo entre o cartão (ou inicio) e o R$
         if m_cartao:
@@ -331,10 +392,47 @@ def _extract_transacoes(pages: list[dict]) -> list[Transacao]:
         m_val = RE_VALOR_R.search(descricao_raw)
         if m_val:
             descricao = descricao_raw[:m_val.start()].strip()
-            valor = _parse_valor(m_val.group(1))
+            # Sinal: detecta "−R$"/"-R$" (negativo, como estornos) antes do "R$"
+            negativo = bool(re.search(r"[−-]\s*R\$", descricao_raw[:m_val.start()]))
+            v = _parse_valor(m_val.group(1))
+            valor = -v if negativo else v
         else:
             i += 1
             continue
+
+        # Outros lançamentos: linhas sem bullet de cartão que não são
+        # "Pagamento em" (tratado acima) são lançamentos auxiliares
+        # (juros/IOF/estornos/NuPay) incluídos no header "Outros lançamentos"
+        # e não devem entrar na soma de débitos (compras). Ignorar com warning.
+        # confirma no log: cabeçalhos repetidos de páginas seguintes (sem R$)
+        # já foram pulados antes por "m_valor is None".
+        if not m_cartao:
+            logger.warning(
+                "outros lançamento (sem cartão) ignorado: %r", text)
+            i += 1
+            continue
+
+        # Limpeza da data DD MMM inicial (grudada na descrição):
+        # "15 AGO Filial523Ctb ..." → "Filial523Ctb ..."
+        descricao = RE_DATA_DDMMM.sub("", descricao, count=1).strip()
+
+        # Parcelamento "Parcela N/M": extrair e remover da descrição
+        parcela_atual = None
+        parcela_total = None
+        m_parcela = RE_PARCELA.search(descricao)
+        if m_parcela:
+            parcela_atual = int(m_parcela.group(1))
+            parcela_total = int(m_parcela.group(2))
+            # Remove o trecho "Parcela N/M" e sobras de "-"/espaços
+            descricao = descricao[:m_parcela.start()] + descricao[m_parcela.end():]
+            descricao = descricao.strip().strip("-").strip()
+
+        # Salvaguarda: se atual > total, inverte com warning
+        if parcela_atual is not None and parcela_total is not None and parcela_atual > parcela_total:
+            logger.warning(
+                "parcela_atual (%d) > parcela_total (%d) — invertendo: %r",
+                parcela_atual, parcela_total, descricao)
+            parcela_atual, parcela_total = parcela_total, parcela_atual
 
         # Data: procurar DD MMM na mesma linha; se nao, na linha seguinte
         data_transacao = None
@@ -363,6 +461,8 @@ def _extract_transacoes(pages: list[dict]) -> list[Transacao]:
                 data=data_transacao,
                 descricao=descricao,
                 valor=valor,
+                parcela_atual=parcela_atual,
+                parcela_total=parcela_total,
                 cartao=cartao_atual,
             ))
         else:
@@ -370,6 +470,7 @@ def _extract_transacoes(pages: list[dict]) -> list[Transacao]:
         i += 1
 
     return transacoes
+
 
 # --------------------------------------------------------------------------
 # Validação
@@ -389,16 +490,20 @@ def _validate(fatura: Fatura, header: dict) -> None:
     saldo_anterior = header["saldo_anterior"]
     creditos = header["creditos"]
     debitos = header["debitos"]
+    outros = header.get("outros", Decimal(0))
 
-    # 2. Equação do header: saldo_anterior - creditos + debitos = total_a_pagar
-    esperado = saldo_anterior - creditos + debitos
+    # 2. Equação do header: saldo_anterior - creditos + debitos + outros = total_a_pagar
+    esperado = saldo_anterior - creditos + debitos + outros
     if abs(esperado - fatura.total_a_pagar) > TOLERANCIA:
         raise ParserError(
             f"equação do header não fecha: {saldo_anterior} - {creditos} + {debitos} "
-            f"= {esperado}, mas total_a_pagar = {fatura.total_a_pagar}"
+            f"+ {outros} = {esperado}, mas total_a_pagar = {fatura.total_a_pagar}"
         )
 
-    # 3. SOMA GLOBAL das transações bate com os totais do header
+    # 3. SOMA GLOBAL das transações bate com os totais do header.
+    #    A soma de transações compara apenas com débitos (compras);
+    #    "Outros lançamentos" é campo de header, e a linha de estorno sem
+    #    valor no corpo é ignorada pelo fluxo normal (sem R$ → skip).
     todas = fatura.transacoes
     soma_debitos = sum((t.valor for t in todas if t.valor > 0), Decimal(0))
     soma_creditos = -sum((t.valor for t in todas if t.valor < 0), Decimal(0))
