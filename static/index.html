@@ -120,6 +120,100 @@ header h1 {
   white-space: nowrap;
 }
 .btn-excluir:hover { background: rgba(248, 113, 111, 0.3); }
+.btn-outline {
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  padding: 8px 20px;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+.btn-outline:hover { background: rgba(56, 189, 248, 0.12); }
+
+/* ===== DICIONÁRIO DE CATEGORIAS ===== */
+.dic-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.dic-header h2 { color: var(--text); font-size: 1.2rem; }
+.dic-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+.dic-card h3 {
+  font-size: 1rem;
+  color: var(--accent);
+  margin-bottom: 12px;
+}
+.regra-bloco {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px;
+  margin-bottom: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  transition: border-color 200ms ease;
+}
+.regra-bloco.invalido { border-color: var(--red); }
+.regra-bloco input,
+.regra-bloco textarea {
+  background: var(--card);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-family: inherit;
+  font-size: 0.8rem;
+}
+.regra-bloco .regra-categoria { flex: 0 0 220px; }
+.regra-bloco .regra-padroes { flex: 1; min-height: 56px; resize: vertical; }
+.btn-remover-regra {
+  background: transparent;
+  border: 1px solid var(--red);
+  color: var(--red);
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 700;
+  padding: 4px 10px;
+  line-height: 1.1;
+}
+.btn-remover-regra:hover { background: rgba(248, 113, 111, 0.2); }
+.aviso-regras {
+  color: var(--muted);
+  font-size: 0.78rem;
+  margin: 12px 0 8px;
+}
+.dic-msg { font-size: 0.85rem; min-height: 20px; margin-top: 8px; }
+.dic-msg.ok { color: var(--green); }
+.dic-msg.erro { color: var(--red); }
+.overrides-vazio { color: var(--muted); font-size: 0.85rem; }
+.dic-tabela { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+.dic-tabela th,
+.dic-tabela td {
+  text-align: left;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+.dic-tabela th {
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.dic-tabela td.desc { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 
 /* ===== ESTADOS ===== */
 .tela { display: none; }
@@ -497,6 +591,7 @@ html {
     <div class="dropdown-options" id="fatura-options"></div>
   </div>
   <button class="btn-nova" id="btn-nova-fatura">Nova fatura</button>
+  <button class="btn-outline" id="btn-dicionario">Dicionário</button>
 </header>
 
 <!-- ===== TELA DE UPLOAD ===== -->
@@ -579,6 +674,38 @@ html {
   </section>
 </section>
 
+<!-- ===== TELA DICIONÁRIO DE CATEGORIAS ===== -->
+<section id="tela-dicionario" class="tela">
+  <div class="dic-header">
+    <h2>Dicionário de categorias</h2>
+    <button class="btn-outline" id="btn-voltar-dicionario">Voltar</button>
+  </div>
+
+  <!-- Regras -->
+  <div class="dic-card">
+    <h3>Regras</h3>
+    <div id="lista-regras"></div>
+    <button class="btn-outline" id="btn-nova-regra">+ Nova regra</button>
+    <div class="aviso-regras">As alterações nas regras só afetam faturas novas até você clicar em “Aplicar em todas as faturas”.</div>
+    <button class="btn-nova" id="btn-salvar-regras">Salvar regras</button>
+    <div class="dic-msg" id="msg-regras"></div>
+  </div>
+
+  <!-- Overrides -->
+  <div class="dic-card">
+    <h3>Ensino manual (overrides)</h3>
+    <div id="lista-overrides"></div>
+    <div class="dic-msg" id="msg-overrides"></div>
+  </div>
+
+  <!-- Aplicar global -->
+  <div class="dic-card">
+    <h3>Aplicar globalmente</h3>
+    <button class="btn-excluir" id="btn-recategorizar">Aplicar em todas as faturas</button>
+    <div class="dic-msg" id="msg-recategorizar"></div>
+  </div>
+</section>
+
 <script>
 "use strict";
 
@@ -649,12 +776,8 @@ async function apiDELETE(url) {
   return resp.json();
 }
 
-async function apiPUT(url, body) {
-  const resp = await fetch(url, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+async function apiFetch(url, opts) {
+  const resp = await fetch(url, opts);
   if (!resp.ok) {
     // Erros da API vêm como {"erro": "..."}; 404/HTTPException como {"detail": "..."}
     let msg = `HTTP ${resp.status}`;
@@ -665,6 +788,23 @@ async function apiPUT(url, body) {
     throw new Error(msg);
   }
   return resp.json();
+}
+
+async function apiPUT(url, body) {
+  return apiFetch(url, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+async function apiPOST(url, body) {
+  const opts = { method: 'POST' };
+  if (body !== undefined) {
+    opts.headers = { 'Content-Type': 'application/json' };
+    opts.body = JSON.stringify(body);
+  }
+  return apiFetch(url, opts);
 }
 
 // ===== Init =====
@@ -1263,6 +1403,193 @@ document.getElementById("table-thead").onclick = function(e) {
 document.getElementById("filtro-busca").oninput = aplicarFiltros;
 document.getElementById("filtro-categoria").onchange = aplicarFiltros;
 document.getElementById("filtro-cartao").onchange = aplicarFiltros;
+
+// ===== Tela: Dicionário de categorias =====
+// Estado LOCAL à tela — nada é persistido sem os botões explícitos.
+let regrasTela = [];      // regras em edição (espelho de data/categorias.json)
+let overridesDic = {};    // ensinamentos manuais (GET /overrides)
+const dicTimers = {};     // timers das mensagens que somem sozinhas
+
+function mostrarMsgDic(idEl, texto, tipo) {
+  const el = document.getElementById(idEl);
+  if (!el) return;
+  el.textContent = texto;
+  el.className = `dic-msg ${tipo || ""}`.trim();
+  if (dicTimers[idEl]) { clearTimeout(dicTimers[idEl]); dicTimers[idEl] = null; }
+  if (tipo === "ok") {
+    dicTimers[idEl] = setTimeout(() => {
+      if (el.textContent === texto) { el.textContent = ""; el.className = "dic-msg"; }
+      dicTimers[idEl] = null;
+    }, 3000);
+  }
+}
+
+// --- Regras ---
+
+function blocoRegraHtml(regra) {
+  return `<div class="regra-bloco">
+    <input class="regra-categoria" type="text" placeholder="Categoria" aria-label="Categoria da regra" value="${escHtml(regra.categoria || "")}">
+    <textarea class="regra-padroes" placeholder="Um padrão por linha" aria-label="Padrões da regra (um por linha)">${escHtml((regra.padroes || []).join("\n"))}</textarea>
+    <button type="button" class="btn-remover-regra" title="Remover regra" aria-label="Remover regra">×</button>
+  </div>`;
+}
+
+function renderizarRegras() {
+  document.getElementById("lista-regras").innerHTML = regrasTela.map(blocoRegraHtml).join("");
+}
+
+// Lê o DOM para o estado — preserva edições pendentes antes de qualquer re-render.
+function sincronizarRegrasDaTela() {
+  regrasTela = [...document.querySelectorAll("#lista-regras .regra-bloco")].map(b => ({
+    categoria: (b.querySelector(".regra-categoria").value || "").trim(),
+    padroes: (b.querySelector(".regra-padroes").value || "")
+      .split("\n").map(p => p.trim()).filter(p => p !== ""),
+  }));
+  return regrasTela;
+}
+
+// Validação client-side: categoria não-vazia (trimada) e >= 1 padrão não-vazio.
+// Retorna as regras prontas para envio, ou null (com destaque vermelho) se inválido.
+function validarRegrasTela() {
+  const blocos = [...document.querySelectorAll("#lista-regras .regra-bloco")];
+  blocos.forEach(b => b.classList.remove("invalido"));
+  const regras = sincronizarRegrasDaTela();
+
+  if (!regras.length) {
+    mostrarMsgDic("msg-regras", "Adicione pelo menos 1 regra.", "erro");
+    return null;
+  }
+
+  let invalidas = 0;
+  regras.forEach((r, i) => {
+    if (!r.categoria || !r.padroes.length) { blocos[i].classList.add("invalido"); invalidas++; }
+  });
+  if (invalidas) {
+    mostrarMsgDic("msg-regras",
+      `${invalidas} regra(s) com problema (destaque vermelho): categoria não-vazia e ao menos 1 padrão. Nada foi enviado.`, "erro");
+    return null;
+  }
+  return regras;
+}
+
+async function carregarRegrasDic() {
+  try {
+    const data = await apiGET("/categorias");
+    regrasTela = (data.regras || []).map(r => ({
+      categoria: r.categoria || "",
+      padroes: Array.isArray(r.padroes) ? [...r.padroes] : [],
+    }));
+    renderizarRegras();
+  } catch (e) {
+    mostrarMsgDic("msg-regras", `Não foi possível carregar as regras: ${e.message}`, "erro");
+  }
+}
+
+async function salvarRegrasDic() {
+  const regras = validarRegrasTela();
+  if (!regras) return;   // inválido -> NAO envia
+  try {
+    const resp = await apiPUT("/categorias", { regras });
+    const salvas = resp && resp.regras ? resp.regras : regras;
+    regrasTela = salvas.map(r => ({ categoria: r.categoria, padroes: [...r.padroes] }));
+    renderizarRegras();
+    mostrarMsgDic("msg-regras", `Regras salvas (${regrasTela.length}).`, "ok");
+  } catch (e) {
+    mostrarMsgDic("msg-regras", e.message, "erro");   // 422 -> campo "erro" do JSON
+  }
+}
+
+// --- Overrides ---
+
+function renderizarOverrides() {
+  const cont = document.getElementById("lista-overrides");
+  const chaves = Object.keys(overridesDic).sort((a, b) => a.localeCompare(b, "pt-BR"));
+  if (!chaves.length) {
+    cont.innerHTML = '<div class="overrides-vazio">Nenhum ensinamento manual ainda.</div>';
+    return;
+  }
+  cont.innerHTML = `<table class="dic-tabela">
+    <thead><tr><th>Descrição</th><th>Categoria</th><th style="width:48px"></th></tr></thead>
+    <tbody>${chaves.map(k => `<tr>
+      <td class="desc">${escHtml(k)}</td>
+      <td>${escHtml(overridesDic[k])}</td>
+      <td style="text-align:right"><button type="button" class="btn-remover-regra btn-remover-override" data-chave="${escHtml(k)}" title="Remover ensinamento" aria-label="Remover ensinamento">×</button></td>
+    </tr>`).join("")}</tbody>
+  </table>`;
+}
+
+async function carregarOverridesDic() {
+  try {
+    overridesDic = await apiGET("/overrides");
+    renderizarOverrides();
+  } catch (e) {
+    document.getElementById("lista-overrides").innerHTML =
+      `<div class="overrides-vazio">Erro ao carregar: ${escHtml(e.message)}</div>`;
+  }
+}
+
+async function removerOverrideDic(chave) {
+  try {
+    await apiDELETE(`/overrides/${encodeURIComponent(chave)}`);   // chave já vem normalizada
+    mostrarMsgDic("msg-overrides", `Ensinamento removido: ${chave}`, "ok");
+  } catch (e) {
+    mostrarMsgDic("msg-overrides", `Não foi possível remover: ${e.message}`, "erro");
+  }
+  await carregarOverridesDic();   // recarrega a lista
+}
+
+// --- Aplicar global ---
+
+async function aplicarEmTodasFaturas() {
+  if (!confirm("Reaplicar regras + ensinamentos em todas as faturas salvas?")) return;
+  try {
+    const resp = await apiPOST("/recategorizar");
+    mostrarMsgDic("msg-recategorizar", `${resp.recategorizadas} faturas recategorizadas.`, "ok");
+    if (faturaAtual) {
+      faturaAtual = await apiGET(`/faturas/${faturaAtual.id}`);
+      selectsPopulados = false;   // categorias novas devem entrar no filtro
+      renderizarViewer();
+    }
+  } catch (e) {
+    mostrarMsgDic("msg-recategorizar", `Falha ao recategorizar: ${e.message}`, "erro");
+  }
+}
+
+function abrirDicionario() {
+  mostrarTelas("dicionario");   // esconde a anchor-nav (não é viewer)
+  carregarRegrasDic();
+  carregarOverridesDic();
+}
+
+// --- Bindings da tela ---
+document.getElementById("btn-dicionario").onclick = abrirDicionario;
+document.getElementById("btn-voltar-dicionario").onclick = () => mostrarTelas(faturaAtual ? "viewer" : "upload");
+document.getElementById("btn-salvar-regras").onclick = salvarRegrasDic;
+document.getElementById("btn-recategorizar").onclick = aplicarEmTodasFaturas;
+
+document.getElementById("btn-nova-regra").onclick = () => {
+  sincronizarRegrasDaTela();   // preserva edições pendentes
+  regrasTela.push({ categoria: "", padroes: [] });
+  renderizarRegras();
+  const blocos = document.querySelectorAll("#lista-regras .regra-bloco");
+  const ultimo = blocos[blocos.length - 1];
+  if (ultimo) ultimo.querySelector(".regra-categoria").focus();
+};
+
+document.getElementById("lista-regras").addEventListener("click", (e) => {
+  const btn = e.target.closest(".btn-remover-regra");
+  if (!btn) return;
+  const idx = [...document.querySelectorAll("#lista-regras .regra-bloco")].indexOf(btn.closest(".regra-bloco"));
+  sincronizarRegrasDaTela();
+  if (idx >= 0) regrasTela.splice(idx, 1);
+  renderizarRegras();
+});
+
+document.getElementById("lista-overrides").addEventListener("click", (e) => {
+  const btn = e.target.closest(".btn-remover-override");
+  if (!btn) return;
+  removerOverrideDic(btn.dataset.chave);
+});
 
 // ===== Anchor Navigation (scroll-spy + smooth scroll) =====
 (function() {
