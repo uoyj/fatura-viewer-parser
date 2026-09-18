@@ -41,6 +41,7 @@ from schemas import Fatura, Transacao, fatura_para_dict
 from parsers.sofisa_2026_09 import ParserError
 
 from categorizer import (
+    aplicar_overrides,
     carregar_overrides,
     carregar_regras,
     categorizar,
@@ -204,11 +205,13 @@ async def upload_fatura(arquivo: UploadFile = File(...), banco: str = Form(...),
         )
 
     # Aplicar categorização determinística (regras do usuário + overrides globais)
+    # Overrides lidos 1x por request e reaproveitados na resposta.
+    overrides_em_uso = carregar_overrides(OVERRIDES_PATH)
     try:
         fatura = categorizar(
             fatura,
             regras=carregar_regras(CATEGORIAS_PATH),
-            overrides=carregar_overrides(OVERRIDES_PATH),
+            overrides=overrides_em_uso,
         )
     except ValueError as e:
         logger.exception("Configuração de categorias inválida: %s", e)
@@ -229,7 +232,9 @@ async def upload_fatura(arquivo: UploadFile = File(...), banco: str = Form(...),
     regras.append(registro)
     _salvar_registros(regras)
 
-    return payload
+    # Resposta: overrides aplicados na leitura (cópia — o JSONL guarda o parse)
+    resposta = dict(payload, transacoes=[dict(t) for t in payload["transacoes"]])
+    return aplicar_overrides(resposta, overrides_em_uso)
 
 
 @app.get("/faturas")
@@ -254,7 +259,11 @@ async def get_fatura(fatura_id: str):
     reg = _encontrar_registro(fatura_id)
     if reg is None:
         raise HTTPException(status_code=404, detail="Fatura não encontrada")
-    return _com_ids(reg["payload"])
+    # Overrides aplicados na LEITURA: ensinamento vale na hora, sem precisar de
+    # POST /recategorizar. Lidos 1x por request e SEMPRE pelo path da API
+    # (OVERRIDES_PATH deriva de DATA_DIR); _com_ids já devolve cópia, então o
+    # payload persistido não é tocado.
+    return aplicar_overrides(_com_ids(reg["payload"]), carregar_overrides(OVERRIDES_PATH))
 
 
 @app.delete("/faturas/{fatura_id}")

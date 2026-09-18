@@ -413,9 +413,18 @@ select.badge-categoria {
   max-width: 200px;
   padding: 1px 6px;
   vertical-align: middle;
+  /* Fundo/cor explícitos: sem isto o <select> cai no branco do UA (o tint inline
+     era inválido) e o texto colorido ficava ilegível dentro do popup. */
+  background: var(--bg);
+  color: var(--text);
   outline: 2px solid transparent;   /* reservado: evita layout shift no flash */
   outline-offset: 1px;
   transition: outline-color 250ms ease, box-shadow 250ms ease, border-color 250ms ease;
+}
+/* As <option> do popup nativo não herdam o tema do SO: fixar aqui garante contraste */
+select.badge-categoria option {
+  background: var(--bg);
+  color: var(--text);
 }
 select.badge-categoria:hover { border-color: rgba(56, 189, 248, 0.5); }
 select.badge-categoria:focus-visible { outline-color: var(--accent); }
@@ -686,7 +695,7 @@ html {
     <h3>Regras</h3>
     <div id="lista-regras"></div>
     <button class="btn-outline" id="btn-nova-regra">+ Nova regra</button>
-    <div class="aviso-regras">As alterações nas regras só afetam faturas novas até você clicar em “Aplicar em todas as faturas”.</div>
+    <div class="aviso-regras">Ensinamentos (categorias manuais) valem imediatamente. Mudanças nas REGRAS só valem após “Aplicar em todas as faturas”.</div>
     <button class="btn-nova" id="btn-salvar-regras">Salvar regras</button>
     <div class="dic-msg" id="msg-regras"></div>
   </div>
@@ -1226,9 +1235,11 @@ function renderizarTabela() {
     const isNeg = valor < 0;
     const valorStr = formatarMoeda(t.valor);
     // Célula de categoria = <select> inline: mudar aqui ENSINA (override global)
+    // Só a BORDA usa a cor da categoria (hsl() válido). Fundo/cor do texto vêm do
+    // CSS (tema escuro) — append de alpha em hsl() é inválido e pintava branco.
     const catStyle = t.categoria
-      ? `background:${corCategoria(t.categoria)}20; color:${corCategoria(t.categoria)}`
-      : "background:rgba(148,163,184,0.3); color:#94a3b8";
+      ? `border-color:${corCategoria(t.categoria)}`
+      : "border-color:rgba(148,163,184,0.4)";
     const catHtml = `<select class="badge badge-categoria"
         data-id="${escHtml(t.id)}"
         data-anterior="${escHtml(t.categoria || "")}"

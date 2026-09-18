@@ -29,6 +29,7 @@ import categorizer
 from api import app
 from categorizer import (
     SEED_REGRAS,
+    aplicar_overrides,
     carregar_overrides,
     carregar_regras,
     categorizar,
@@ -219,6 +220,58 @@ class TestPrecedencia:
         salvar_overrides({normalizar_descricao("PANIFICADORA E CO"): "Manual"})
         fatura = categorizar(_fatura(["PANIFICADORA E CO", "COISA NADA"]))
         assert [t.categoria for t in fatura.transacoes] == ["Manual", "Segunda"]
+
+
+# ---------------------------------------------------------------------------
+# 3b. Leitura: overrides aplicados num payload já serializado
+# ---------------------------------------------------------------------------
+
+class TestAplicarOverrides:
+    """aplicar_overrides(payload) — ensinamento vale na LEITURA (GET/upload)."""
+
+    def test_sem_overrides_retorna_o_mesmo_objeto(self, isolado):
+        payload = _payload([_transacao("QUALQUER COISA", categoria="X")])
+        resultado = aplicar_overrides(payload)
+        assert resultado is payload
+        assert payload["transacoes"][0]["categoria"] == "X"
+
+    def test_aplica_em_todas_as_transacoes_da_mesma_chave(self, isolado):
+        payload = _payload([
+            _transacao("Compra a Vista NONO CAFE", categoria="Restaurante/Cafe"),
+            _transacao("  compra a vista   nono cafe ", categoria="Restaurante/Cafe"),
+            _transacao("AMAZON BR", categoria="Compras online"),
+        ])
+        salvar_overrides({normalizar_descricao("Compra a Vista NONO CAFE"): "Teste"})
+
+        aplicar_overrides(payload)
+
+        assert [t["categoria"] for t in payload["transacoes"]] == [
+            "Teste", "Teste", "Compras online",
+        ]
+
+    def test_nao_mexe_em_outros_campos(self, isolado):
+        payload = _payload([_transacao("AMAZON BR", categoria="Compras online")])
+        antes = json.loads(json.dumps(payload))
+        salvar_overrides({normalizar_descricao("AMAZON BR"): "Teste"})
+
+        aplicar_overrides(payload)
+
+        t = payload["transacoes"][0]
+        assert t["categoria"] == "Teste"
+        for campo in ("data", "descricao", "valor", "cartao", "moeda", "parcela_atual", "parcela_total"):
+            assert t[campo] == antes["transacoes"][0][campo], campo
+        assert payload["banco"] == antes["banco"]
+
+    def test_payload_sem_transacoes(self, isolado):
+        salvar_overrides({"X": "Y"})
+        assert aplicar_overrides({"banco": "x"}) == {"banco": "x"}
+        assert aplicar_overrides({"banco": "x", "transacoes": []}) == {"banco": "x", "transacoes": []}
+
+    def test_aceita_overrides_por_parametro(self, isolado):
+        """Passar overrides evita reler o arquivo (1x por request)."""
+        payload = _payload([_transacao("AMAZON BR", categoria="Compras online")])
+        aplicar_overrides(payload, {"AMAZON BR": "Teste"})
+        assert payload["transacoes"][0]["categoria"] == "Teste"
 
 
 # ---------------------------------------------------------------------------

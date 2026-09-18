@@ -11,9 +11,11 @@ editáveis em data/. O SEED_REGRAS abaixo é usado UMA ÚNICA VEZ para criar
 data/categorias.json quando ele ainda não existe — depois disso, o arquivo
 é a fonte da verdade.
 
-Chave de override: normalizar_descricao(descricao) — assim, recategorizar
-uma transação ensina o sistema para TODAS as faturas (passadas, via
-POST /recategorizar, e futuras, via parse/categorizar).
+Chave de override: normalizar_descricao(descricao). O override é aplicado na
+LEITURA (aplicar_overrides, usado por GET /faturas/{id} e pela resposta do
+upload) — então recategorizar uma transação vale na hora para todas as faturas
+com a mesma descrição normalizada, sem precisar de POST /recategorizar (esse
+continua necessário para as REGRAS, que são aplicadas no parse).
 
 Arquivos:
     data/categorias.json  {"regras": [{"categoria": "X", "padroes": ["Y"]}, ...]}
@@ -207,6 +209,34 @@ def carregar_overrides(path: Path | str | None = None) -> dict[str, str]:
 def salvar_overrides(overrides: dict[str, str], path: Path | str | None = None) -> None:
     """Grava {descricao_normalizada: categoria} em data/overrides.json."""
     _escrever_json(_resolver(path, OVERRIDES_PATH), dict(overrides))
+
+
+def aplicar_overrides(
+    payload: dict,
+    overrides: dict[str, str] | None = None,
+) -> dict:
+    """
+    Aplica os overrides manuais (global, por descrição normalizada) num payload
+    JÁ SERIALIZADO (dict de fatura com "transacoes").
+
+    Usado na LEITURA: um ensinamento salvo vale imediatamente no GET, sem
+    precisar de POST /recategorizar (esse continua necessário para as REGRAS,
+    que são aplicadas no parse).
+
+    Modifica `payload["transacoes"][i]["categoria"]` in-place e retorna o mesmo
+    objeto. Se não houver overrides, retorna o payload intacto.
+    """
+    if overrides is None:
+        overrides = carregar_overrides()
+    if not overrides:
+        return payload
+
+    for t in payload.get("transacoes") or []:
+        chave = normalizar_descricao(t.get("descricao", ""))
+        if chave in overrides:
+            t["categoria"] = overrides[chave]
+
+    return payload
 
 
 # ---------------------------------------------------------------------------

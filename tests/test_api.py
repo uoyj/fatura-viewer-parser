@@ -204,6 +204,88 @@ class TestDelete:
         assert resp.status_code == 404
 
 
+class TestOverrideNaLeitura:
+    """Override manual vale IMEDIATAMENTE no GET (sem POST /recategorizar)."""
+
+    # 'Compra a Vista NONO CAFE' aparece 9x na fatura sofisa com a mesma
+    # descricao -> o override por descricao normalizada muda as 9 de uma vez.
+    DESCRICAO = "Compra a Vista NONO CAFE"
+    CATEGORIA_REGRA = "Restaurante/Cafe"
+    CATEGORIA_OVERRIDE = "Teste"
+
+    def _upload(self, client) -> dict:
+        with open(FATURA_PDF, "rb") as f:
+            resp = client.post(
+                "/faturas",
+                files={"arquivo": ("Fatura.pdf", f, "application/pdf")},
+                data={"banco": "sofisa"},
+            )
+        assert resp.status_code == 200
+        return resp.json()
+
+    def _cats_no_get(self, client, fid) -> list[str]:
+        transacoes = client.get(f"/faturas/{fid}").json()["transacoes"]
+        return [t["categoria"] for t in transacoes if t["descricao"] == self.DESCRICAO]
+
+    def _put_override(self, client, categoria: str):
+        from urllib.parse import quote
+        return client.put(
+            f"/overrides/{quote(self.DESCRICAO, safe='*')}",
+            json={"categoria": categoria},
+        )
+
+    def test_override_reflete_no_get_sem_recategorizar(self, client):
+        data = self._upload(client)
+        fid = data["id"]
+
+        # estado inicial: categoria vem da REGRA (parse)
+        antes = self._cats_no_get(client, fid)
+        assert len(antes) == 9
+        assert set(antes) == {self.CATEGORIA_REGRA}
+
+        # PUT do override — sem chamar /recategorizar em momento algum
+        resp = self._put_override(client, self.CATEGORIA_OVERRIDE)
+        assert resp.status_code == 200
+        assert resp.json()["chave"] == self.DESCRICAO.upper()
+
+        depois = self._cats_no_get(client, fid)
+        assert len(depois) == 9, "todas as linhas com a mesma descricao devem mudar"
+        assert set(depois) == {self.CATEGORIA_OVERRIDE}
+
+        # o JSONL continua com o resultado do PARSE (override e aplicado na leitura)
+        reg = json.loads(api.JSONL_PATH.read_text(encoding="utf-8").strip().splitlines()[0])
+        no_disco = [t["categoria"] for t in reg["payload"]["transacoes"] if t["descricao"] == self.DESCRICAO]
+        assert set(no_disco) == {self.CATEGORIA_REGRA}
+
+    def test_delete_override_volta_a_categoria_original(self, client):
+        data = self._upload(client)
+        fid = data["id"]
+        assert self._put_override(client, self.CATEGORIA_OVERRIDE).status_code == 200
+        assert set(self._cats_no_get(client, fid)) == {self.CATEGORIA_OVERRIDE}
+
+        from urllib.parse import quote
+        resp = client.delete(f"/overrides/{quote(self.DESCRICAO, safe='*')}")
+        assert resp.status_code == 200
+
+        assert set(self._cats_no_get(client, fid)) == {self.CATEGORIA_REGRA}
+
+    def test_upload_response_reflete_override_existente(self, client):
+        """A resposta do POST /faturas também passa pelos overrides."""
+        self._upload(client)
+        self._put_override(client, self.CATEGORIA_OVERRIDE)
+
+        data = self._upload(client)
+        cats = [t["categoria"] for t in data["transacoes"] if t["descricao"] == self.DESCRICAO]
+        assert cats and set(cats) == {self.CATEGORIA_OVERRIDE}
+
+    def test_sem_override_get_inalterado(self, client):
+        """Sem overrides, o GET é idêntico ao payload persistido."""
+        data = self._upload(client)
+        fid = data["id"]
+        assert set(self._cats_no_get(client, fid)) == {self.CATEGORIA_REGRA}
+        assert client.get("/overrides").json() == {}
+
+
 class TestPersistencia:
 
     def test_jsonl_persistido(self, client):

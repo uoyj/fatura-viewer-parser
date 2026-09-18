@@ -83,7 +83,7 @@ Dados são persistidos em `data/faturas.jsonl` (uma linha JSON por fatura) e upl
 **Precedência:** override manual global > regras do dicionário > `"Outros"`.
 
 - **Dicionário** (`data/categorias.json`) — regras de substring, primeira que casa vence. Criado automaticamente na primeira execução com o seed da constante `SEED_REGRAS` (12 categorias); depois disso **o arquivo é a fonte da verdade**.
-- **Override manual global** (`data/overrides.json`) — chave = descrição normalizada (`upper` + `strip` + espaços múltiplos colapsados em 1). Recategorizar uma transação ensina o sistema para **todas** as faturas: as passadas (via `POST /recategorizar`) e as futuras (via parse/upload).
+- **Override manual global** (`data/overrides.json`) — chave = descrição normalizada (`upper` + `strip` + espaços múltiplos colapsados em 1). Vale **imediatamente** na leitura (`GET /faturas/{id}` e resposta do `POST /faturas`), sem precisar de `POST /recategorizar`. Já as **REGRAS** só valem em faturas novas até você rodar `POST /recategorizar`.
 
 ```bash
 # Regras (dicionário)
