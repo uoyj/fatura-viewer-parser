@@ -1,0 +1,260 @@
+{
+  "banco": "itau",
+  "modelo": "2026-09",
+  "fechamento": "2026-09-03",
+  "vencimento": "2026-09-10",
+  "total_a_pagar": "1940.84",
+  "pagamento_minimo": "194.08",
+  "transacoes": [
+    {
+      "data": "2026-08-03",
+      "descricao": "Pagamento via conta",
+      "valor": "-2111.00",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "3620"
+    },
+    {
+      "data": "2026-08-11",
+      "descricao": "DROGARIAS NISSEICURITIB",
+      "valor": "454.21",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "3620"
+    },
+    {
+      "data": "2026-08-11",
+      "descricao": "FARMACIA E DROGARIA NIC",
+      "valor": "89.91",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "3620"
+    },
+    {
+      "data": "2026-08-11",
+      "descricao": "MP *ROSEDORPERFUMOSASCO",
+      "valor": "38.00",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "3620"
+    },
+    {
+      "data": "2026-08-13",
+      "descricao": "Uber UBER *TRIP HELP.US",
+      "valor": "10.46",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "3620"
+    },
+    {
+      "data": "2026-03-09",
+      "descricao": "FARMACIA DRO*N",
+      "valor": "34.40",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "3620"
+    },
+    {
+      "data": "2026-08-13",
+      "descricao": "Uber UBER *TRIP HELP.US",
+      "valor": "3.00",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "3620"
+    },
+    {
+      "data": "2026-06-03",
+      "descricao": "JIM.COM* IBUY",
+      "valor": "476.28",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "3620"
+    },
+    {
+      "data": "2026-08-13",
+      "descricao": "Uber UBER *TRIP HELP.US",
+      "valor": "8.96",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "3620"
+    },
+    {
+      "data": "2026-07-05",
+      "descricao": "FILIAL 523 CTB",
+      "valor": "35.54",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "3620"
+    },
+    {
+      "data": "2026-08-13",
+      "descricao": "JULIANA PAULA FARIASCUR",
+      "valor": "90.00",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "3620"
+    },
+    {
+      "data": "2026-07-07",
+      "descricao": "FILIAL 523 CTB",
+      "valor": "34.74",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "3620"
+    },
+    {
+      "data": "2026-08-13",
+      "descricao": "BE HAPPY CWB HEAD SHOPC",
+      "valor": "7.00",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "3620"
+    },
+    {
+      "data": "2026-07-07",
+      "descricao": "AMAZONMKTPLC*M",
+      "valor": "50.79",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "3620"
+    },
+    {
+      "data": "2026-08-13",
+      "descricao": "R COMENDADOR ARAUJOCASC",
+      "valor": "91.83",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "3620"
+    },
+    {
+      "data": "2026-08-03",
+      "descricao": "99*SAO PAULOBRA",
+      "valor": "9.30",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "3620"
+    },
+    {
+      "data": "2026-08-04",
+      "descricao": "FILIAL 523 CTB/24CURITI",
+      "valor": "89.37",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "3620"
+    },
+    {
+      "data": "2026-08-04",
+      "descricao": "99*SAO PAULOBRA",
+      "valor": "12.70",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "3620"
+    },
+    {
+      "data": "2026-08-05",
+      "descricao": "FernandoJoaoVazCURITIBA",
+      "valor": "130.00",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "3620"
+    },
+    {
+      "data": "2026-08-05",
+      "descricao": "99*SAO PAULOBRA",
+      "valor": "6.48",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "3620"
+    },
+    {
+      "data": "2026-08-05",
+      "descricao": "99*SAO PAULOBRA",
+      "valor": "11.20",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "3620"
+    },
+    {
+      "data": "2026-08-06",
+      "descricao": "PG *ZE DELIVERYSAO PAUL",
+      "valor": "175.12",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "3620"
+    },
+    {
+      "data": "2026-08-08",
+      "descricao": "Uber UBER *TRIP HELP.US",
+      "valor": "17.99",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "3620"
+    },
+    {
+      "data": "2026-08-08",
+      "descricao": "MzEntretenimentoCURITIB",
+      "valor": "41.58",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "3620"
+    },
+    {
+      "data": "2026-08-08",
+      "descricao": "Uber UBER *TRIP HELP.US",
+      "valor": "21.98",
+      "parcela_atual": null,
+      "parcela_total": null,
+      "moeda": "BRL",
+      "categoria": null,
+      "cartao": "3620"
+    }
+  ]
+}
