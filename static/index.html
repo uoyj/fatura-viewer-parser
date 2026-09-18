@@ -370,9 +370,96 @@ tr:hover td { background: #0f172a; }
   font-size: 0.8rem;
   font-weight: 600;
 }
+
+/* ===== ANCHOR NAV ===== */
+html {
+  scroll-behavior: smooth;
+}
+#anchor-nav {
+  position: fixed;
+  top: 50%;
+  right: 16px;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 8px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  z-index: 999;
+  opacity: 0.85;
+}
+#anchor-nav.hidden {
+  display: none;
+}
+#anchor-nav .nav-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--muted);
+  cursor: pointer;
+  transition: width 0.2s, height 0.2s, background-color 0.2s;
+}
+#anchor-nav .nav-item.ativa {
+  width: 14px;
+  height: 14px;
+  background: var(--accent);
+}
+#anchor-nav .nav-item:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+#anchor-nav .nav-item .tooltip {
+  position: absolute;
+  left: -8px;
+  transform: translateX(-100%);
+  padding: 2px 6px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 0.75rem;
+  color: var(--muted);
+  white-space: nowrap;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.2s, visibility 0.2s;
+  pointer-events: none;
+}
+#anchor-nav .nav-item:hover .tooltip,
+#anchor-nav .nav-item:focus .tooltip {
+  opacity: 1;
+  visibility: visible;
+}
+@media (max-width: 768px) {
+  #anchor-nav {
+    display: none !important;
+  }
+}
 </style>
 </head>
 <body>
+
+<!-- ===== ANCHOR NAV (aparece apenas na tela-viewer) ===== -->
+<nav id="anchor-nav" class="hidden">
+  <div class="nav-item" role="link" tabindex="0" aria-label="Resumo" data-target="sec-resumo">
+    <span class="tooltip">Resumo</span>
+  </div>
+  <div class="nav-item" role="link" tabindex="0" aria-label="Transações" data-target="sec-transacoes">
+    <span class="tooltip">Transações</span>
+  </div>
+  <div class="nav-item" role="link" tabindex="0" aria-label="Por categoria" data-target="sec-categorias">
+    <span class="tooltip">Por categoria</span>
+  </div>
+  <div class="nav-item" role="link" tabindex="0" aria-label="Topo" data-target="topo">
+    <span class="tooltip">Topo</span>
+  </div>
+</nav>
 
 <!-- ===== BARRA SUPERIOR ===== -->
 <header id="header-barra">
@@ -414,43 +501,49 @@ tr:hover td { background: #0f172a; }
 
 <!-- ===== TELA DE VISUALIZAÇÃO ===== -->
 <section id="tela-viewer" class="tela">
-  <div class="viewer-header">
-    <h2 id="viewer-title">Visualização da Fatura</h2>
-    <button class="btn-excluir" id="btn-excluir-fatura">Excluir fatura</button>
-  </div>
-
-  <div class="header-cards" id="header-cards"></div>
-
-  <!-- Filtros -->
-  <div class="filtros">
-    <div class="filtro-grupo">
-      <label>Buscar</label>
-      <input type="text" id="filtro-busca" class="filtro-input" placeholder="Descrição...">
+  <section id="sec-resumo">
+    <div class="viewer-header">
+      <h2 id="viewer-title">Visualização da Fatura</h2>
+      <button class="btn-excluir" id="btn-excluir-fatura">Excluir fatura</button>
     </div>
-    <div class="filtro-grupo">
-      <label>Categoria</label>
-      <select id="filtro-categoria" class="filtro-input"></select>
-    </div>
-    <div class="filtro-grupo">
-      <label>Cartão</label>
-      <select id="filtro-cartao" class="filtro-input"></select>
-    </div>
-  </div>
 
-  <!-- Tabela -->
-  <div class="table-wrapper">
-    <table>
-      <thead id="table-thead"></thead>
-      <tbody id="table-tbody"></tbody>
-    </table>
-    <div class="table-footer" id="table-footer"></div>
-  </div>
+    <div class="header-cards" id="header-cards"></div>
+  </section>
+
+  <section id="sec-transacoes">
+    <!-- Filtros -->
+    <div class="filtros">
+      <div class="filtro-grupo">
+        <label>Buscar</label>
+        <input type="text" id="filtro-busca" class="filtro-input" placeholder="Descrição...">
+      </div>
+      <div class="filtro-grupo">
+        <label>Categoria</label>
+        <select id="filtro-categoria" class="filtro-input"></select>
+      </div>
+      <div class="filtro-grupo">
+        <label>Cartão</label>
+        <select id="filtro-cartao" class="filtro-input"></select>
+      </div>
+    </div>
+
+    <!-- Tabela -->
+    <div class="table-wrapper">
+      <table>
+        <thead id="table-thead"></thead>
+        <tbody id="table-tbody"></tbody>
+      </table>
+      <div class="table-footer" id="table-footer"></div>
+    </div>
+  </section>
 
   <!-- Totais por categoria -->
-  <div class="categoria-section">
-    <h3>Totais por categoria (débitos)</h3>
-    <div id="categoria-lista"></div>
-  </div>
+  <section id="sec-categorias">
+    <div class="categoria-section">
+      <h3>Totais por categoria (débitos)</h3>
+      <div id="categoria-lista"></div>
+    </div>
+  </section>
 </section>
 
 <script>
@@ -634,6 +727,15 @@ async function deletarFatura(id) {
 function mostrarTelas(tela) {
   document.querySelectorAll(".tela").forEach(s => s.classList.remove("ativa"));
   document.getElementById(`tela-${tela}`).classList.add("ativa");
+  // Mostrar/esconder anchor nav
+  const nav = document.getElementById("anchor-nav");
+  if (nav) {
+    if (tela === "viewer") {
+      nav.classList.remove("hidden");
+    } else {
+      nav.classList.add("hidden");
+    }
+  }
 }
 
 // ===== Event Listeners =====
@@ -898,6 +1000,70 @@ document.getElementById("table-thead").onclick = function(e) {
 document.getElementById("filtro-busca").oninput = aplicarFiltros;
 document.getElementById("filtro-categoria").onchange = aplicarFiltros;
 document.getElementById("filtro-cartao").onchange = aplicarFiltros;
+
+// ===== Anchor Navigation (scroll-spy + smooth scroll) =====
+(function() {
+  const nav = document.getElementById("anchor-nav");
+  if (!nav) return;
+
+  const items = nav.querySelectorAll(".nav-item");
+  const sections = ["sec-resumo", "sec-transacoes", "sec-categorias"];
+
+  // --- IntersectionObserver para scroll-spy ---
+  let scrollIntencional = false;
+
+  const observer = new IntersectionObserver((entries) => {
+    // Ignorar eventos durante o scroll programático (~600ms após clique)
+    if (scrollIntencional) return;
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        const id = entry.target.id;
+        items.forEach(item => {
+          item.classList.toggle("ativa", item.dataset.target === id);
+        });
+      }
+    });
+  }, {
+    root: null,
+    threshold: 0,
+    rootMargin: "0px 0px -70% 0px"
+  });
+
+  // Observar as 3 sections
+  sections.forEach(id => {
+    const sec = document.getElementById(id);
+    if (sec) observer.observe(sec);
+  });
+
+  // --- Click em cada bolinha ---
+  items.forEach(item => {
+    item.addEventListener("click", () => {
+      const target = item.dataset.target;
+      if (target === "topo") {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+        items.forEach(i => i.classList.remove("ativa"));
+      } else {
+        const sec = document.getElementById(target);
+        if (sec) {
+          sec.scrollIntoView({ behavior: "smooth" });
+        }
+      }
+      // Marcar a bolinha clicada como ativa e bloquear scroll-spy por ~600ms
+      scrollIntencional = true;
+      items.forEach(i => i.classList.remove("ativa"));
+      item.classList.add("ativa");
+      setTimeout(() => { scrollIntencional = false; }, 600);
+    });
+
+    // Teclado: Enter / Space ativa
+    item.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        item.click();
+      }
+    });
+  });
+})();
 
 // Init
 init();
