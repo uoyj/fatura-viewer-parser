@@ -6,7 +6,8 @@ Mudanças da REV 3 (simplificação de modelo):
 - Output é UMA lista plana de Transacao, cada uma tagueada com "cartao"
   (número mascarado ou "" se desconhecido).
 - _extract_cartoes substituído por _extract_transacoes (lista plana).
-- _extract_parcelamento: validação de parcelamento invertido (Parc.10/1 → 1/10).
+- _extract_parcelamento: parcela atual recalculada pela data da compra quando a
+  string vem truncada (Parc.10/1 → 10/10); inversão só como fallback sem data.
 - Validação por SOMA GLOBAL de transações vs. totais do header.
 - Header extraído pela equação completa (4 valores num regex único).
 - Tudo após "VALOR TOTAL DA FATURA" é ignorado (obrigações futuras).
@@ -86,23 +87,49 @@ def _parse_valor(s: str) -> Decimal | None:
     return -v if neg else v
 
 
-def _extract_parcelamento(descricao: str):
+def _parcela_atual_por_data(data_compra: date, fechamento: date) -> int:
+    """
+    Sofisa: ciclo fecha no dia 15. Compra até dia 15 → parcela 1 na fatura
+    daquele mês; compra após o dia 15 → parcela 1 na fatura do mês seguinte.
+    Ex: compra 30/11/25, fechamento 15/09/26 → parcela 10.
+    """
+    idx_f = fechamento.year * 12 + fechamento.month
+    idx_c = data_compra.year * 12 + data_compra.month
+    primeiro = idx_c if data_compra.day <= 15 else idx_c + 1
+    return idx_f - primeiro + 1
+
+
+def _extract_parcelamento(descricao: str, data_compra: date | None = None,
+                          fechamento: date | None = None):
     """
     Extrai parcelamento da descrição.
 
     Ex: "EC *STERILAIR Parc.10/1 74,80" → ("EC *STERILAIR 74,80", 1, 10)
-    O PDF traz "Parc.10/1" = 10 parcelas, atual = 1.
-    Se pa > pt, inverte com warning (layout pode ter invertido).
+
+    Casos:
+    - String íntegra (pa <= pt): confia na string.
+    - String suspeita (pa > pt): a coluna do PDF é estreita e clipa o último
+      dígito ("10/10" → "10/1"). Recalcula pa pela data da compra (ciclo
+      Sofisa fecha dia 15) e assume pt = pa (última parcela).
+    - Sem data/fechamento: fallback antigo (inversão) com warning.
     """
     m = RE_PARC.search(descricao)
     if m:
         pa, pt = int(m.group(1)), int(m.group(2))
         if pa > pt:
-            logger.warning(
-                "parcelamento invertido '%s' — trocado para %d/%d",
-                m.group(0), pt, pa,
-            )
-            pa, pt = pt, pa
+            if data_compra and fechamento:
+                pa = _parcela_atual_por_data(data_compra, fechamento)
+                pt = pa  # truncada no último dígito → última parcela
+                logger.warning(
+                    "Parc. truncado '%s' — assumido %d/%d pela data da compra",
+                    m.group(0), pa, pt,
+                )
+            else:
+                logger.warning(
+                    "parcelamento invertido '%s' — trocado para %d/%d",
+                    m.group(0), pt, pa,
+                )
+                pa, pt = pt, pa
         limpa = RE_PARC.sub("", descricao).strip()
         return limpa, pa, pt
     return descricao, None, None
@@ -204,7 +231,7 @@ def _extract_header(page1: dict) -> dict:
 # Extração de transações por colunas (x-positions) — REV 3
 # --------------------------------------------------------------------------
 
-def _parse_linha_multi(words: list[dict]) -> list[Transacao]:
+def _parse_linha_multi(words: list[dict], fechamento: date | None = None) -> list[Transacao]:
     """
     Recebe as palavras de UMA linha visual e devolve 0..N transações.
 
@@ -261,7 +288,15 @@ def _parse_linha_multi(words: list[dict]) -> list[Transacao]:
         if data is None or valor is None:
             continue
         descricao = " ".join(bucket[id(d)]).strip()
-        descricao, pa, pt = _extract_parcelamento(descricao)
+        descricao, pa, pt = _extract_parcelamento(descricao, data, fechamento)
+        # Consistência: string íntegra mas diverge da data → provável
+        # descrição/data pareadas errado pelas colunas (só observa, não corrige)
+        if (pa is not None and fechamento and data
+                and _parcela_atual_por_data(data, fechamento) != pa):
+            logger.warning(
+                "parcela %d/%d diverge da data %s (fech %s) — conferir pareamento",
+                pa, pt, data, fechamento,
+            )
         if not descricao:
             logger.warning("transação sem descrição: %s %s", d["text"], v["text"])
         out.append(Transacao(
@@ -275,7 +310,7 @@ def _parse_linha_multi(words: list[dict]) -> list[Transacao]:
 # NOVO — lista plana de transações (REV 3: sem Cartao)
 # --------------------------------------------------------------------------
 
-def _extract_transacoes(pages: list[dict]) -> list[Transacao]:
+def _extract_transacoes(pages: list[dict], fechamento: date | None = None) -> list[Transacao]:
     """
     Lista plana de transações, cada uma tagueada com o último número
     mascarado visto (coluna "cartao"). Não há objetos Cartao.
@@ -304,7 +339,7 @@ def _extract_transacoes(pages: list[dict]) -> list[Transacao]:
             if m:
                 cartao_atual = m.group(0)
                 continue
-            for t in _parse_linha_multi(line["words"]):
+            for t in _parse_linha_multi(line["words"], fechamento):
                 t.cartao = cartao_atual
                 transacoes.append(t)
     return transacoes
@@ -374,7 +409,7 @@ def parse_sofisa_2026_09(extractor_output: dict) -> Fatura:
         raise ParserError("PDF vazio ou sem páginas")
 
     header = _extract_header(pages[0])
-    transacoes = _extract_transacoes(pages)
+    transacoes = _extract_transacoes(pages, header["fechamento"])
 
     fatura = Fatura(
         banco="sofisa",
