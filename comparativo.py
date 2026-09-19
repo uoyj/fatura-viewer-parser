@@ -3,6 +3,9 @@ Comparação mês a mês e detecção de gastos anômalos.
 
 Puro: recebe a lista de registros do JSONL (dicts), retorna dict JSON-serializável.
 Sem I/O, sem dependência de api.py — testável isoladamente.
+
+Semântica: "total do mês" = SOMA DE DÉBITOS (valor > 0). Pagamentos de fatura e
+estornos (valores negativos) NÃO entram — não representam gasto do mês.
 """
 
 from __future__ import annotations
@@ -16,15 +19,20 @@ MIN_DIF_CATEGORIA = Decimal("50")  # e diferença absoluta >= R$50
 RAZAO_TRANSACAO = Decimal("2.5")   # transação > 2.5x a mediana da descrição
 MIN_VALOR_TRANSACAO = Decimal("100")
 
+CAP_MESES = 12  # mesmo teto do projetarParcelas() do frontend
 
-def _media(vals: list[Decimal]) -> Decimal:
-    return sum(vals, Decimal("0")) / Decimal(len(vals))
+
+def _add_months(y: int, m: int, k: int) -> tuple[int, int]:
+    """(ano, mês) + k meses, com virada de ano."""
+    total = y * 12 + (m - 1) + k
+    return total // 12, total % 12 + 1
 
 
 def calcular_comparativo(registros: list[dict]) -> dict:
     """
     registros: lista de registros do JSONL (cada um com reg["payload"]).
-    Retorna: meses, totais por mês, gastos por categoria x mês, anomalias.
+    Retorna: meses, totais por mês (só débitos), gastos por categoria x mês,
+    anomalias.
     """
     # --- Agregação ---
     por_categoria: dict[str, dict[str, Decimal]] = {}
@@ -41,6 +49,8 @@ def calcular_comparativo(registros: list[dict]) -> dict:
             try:
                 valor = Decimal(str(t["valor"]))
             except Exception:
+                continue
+            if valor <= 0:   # gasto = débitos; pagamentos/estornos fora
                 continue
             totais_mes[mes] += valor
             cat = t.get("categoria") or "Sem categoria"
@@ -80,6 +90,8 @@ def calcular_comparativo(registros: list[dict]) -> dict:
                 valor = Decimal(str(t["valor"]))
             except Exception:
                 continue
+            if valor <= 0:
+                continue
             outros = [v for m, vals in por_descricao.get(desc, {}).items()
                       if m != mes for v in vals]
             if len(outros) < 2:
@@ -103,15 +115,6 @@ def calcular_comparativo(registros: list[dict]) -> dict:
         "anomalias_categoria": anomalias_categoria,
         "anomalias_transacao": anomalias_transacao,
     }
-
-
-CAP_MESES = 12  # mesmo teto do projetarParcelas() do frontend
-
-
-def _add_months(y: int, m: int, k: int) -> tuple[int, int]:
-    """(ano, mês) + k meses, com virada de ano."""
-    total = y * 12 + (m - 1) + k
-    return total // 12, total % 12 + 1
 
 
 def calcular_consolidado(registros: list[dict], recorrentes: set[str]) -> dict:
@@ -181,9 +184,6 @@ def calcular_consolidado(registros: list[dict], recorrentes: set[str]) -> dict:
         "meses": base["meses"],
         "totais_mes": base["totais_mes"],
         "por_categoria": base["por_categoria"],
-        # Total agregado é quantizado em 2 casas ("180.00"): o histórico do
-        # comparativo mantém str(Decimal) cru — aqui o valor é a SOMA de N
-        # transações de uma ou mais faturas e serve de total de mês.
-        "projecao": {m: {"total": f"{b['total']:.2f}", "linhas": b["linhas"]}
+        "projecao": {m: {"total": str(b["total"]), "linhas": b["linhas"]}
                      for m, b in sorted(proj.items())},
     }
