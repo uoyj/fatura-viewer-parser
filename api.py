@@ -56,7 +56,7 @@ from categorizer import (
     validar_regras,
 )
 
-from comparativo import calcular_comparativo
+from comparativo import calcular_comparativo, calcular_consolidado
 
 logger = logging.getLogger("api")
 
@@ -170,6 +170,12 @@ def _dict_para_fatura(payload: dict) -> Fatura | None:
 async def comparativo():
     """Comparação mês a mês + anomalias sobre todas as faturas salvas."""
     return calcular_comparativo(_carregar_registros())
+
+@app.get("/consolidado")
+async def consolidado():
+    """Visão consolidada: histórico por mês + projeção de todas as faturas."""
+    recorrentes = set(carregar_recorrentes(RECORRENTES_PATH) or {})
+    return calcular_consolidado(_carregar_registros(), recorrentes)
 
 @app.post("/faturas")
 async def upload_fatura(arquivo: UploadFile = File(...), banco: str = Form(...), versao: str = "latest"):

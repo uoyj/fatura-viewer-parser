@@ -55,6 +55,25 @@ header h1 {
   padding: 10px 12px; margin-bottom: 8px; font-size: 0.85rem;
   display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap;
 }
+/* ===== PIZZA (toggle Barras/Pizza) ===== */
+.vista-toggle { display: flex; gap: 4px; margin-bottom: 12px; }
+.vt-btn {
+  background: transparent; border: 1px solid var(--border); color: var(--muted);
+  border-radius: 4px; cursor: pointer; font-family: inherit; font-size: 0.75rem;
+  padding: 3px 10px;
+}
+.vt-btn.ativo { color: var(--accent); border-color: var(--accent); }
+.pizza-wrap { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
+.pizza {
+  width: 190px; height: 190px; border-radius: 50%; flex-shrink: 0;
+  border: 1px solid var(--border);
+}
+.pizza-legenda { flex: 1; min-width: 220px; font-size: 0.82rem; }
+.pizza-legenda .pl-linha {
+  display: flex; align-items: center; gap: 8px; padding: 2px 0;
+}
+.pizza-cor { width: 11px; height: 11px; border-radius: 3px; flex-shrink: 0; }
+.pizza-legenda .pl-valor { margin-left: auto; color: var(--muted); }
 .dropdown-container {
   position: relative;
   flex: 1;
@@ -727,6 +746,7 @@ html {
   <button class="btn-nova" id="btn-nova-fatura">Nova fatura</button>
   <button class="btn-outline" id="btn-dicionario">Dicionário</button>
   <button class="btn-outline" id="btn-comparativo">Comparativo</button>
+  <button class="btn-outline" id="btn-consolidado">Consolidado</button>
 </header>
 
 <!-- ===== TELA DE UPLOAD ===== -->
@@ -873,6 +893,33 @@ html {
       <h3>Anomalias <small style="color:var(--muted);font-weight:400">(mês &gt; 1,5× a mediana anterior · transação &gt; 2,5× a mediana da descrição)</small></h3>
       <div id="comp-anom-cat"></div>
       <div id="comp-anom-tx" style="margin-top:12px;"></div>
+    </div>
+  </section>
+</section>
+
+<!-- ===== TELA CONSOLIDADO ===== -->
+<section id="tela-consolidado" class="tela">
+  <div class="dic-header">
+    <h2>Visão consolidada</h2>
+    <button class="btn-outline" id="btn-voltar-consolidado">Voltar</button>
+  </div>
+  <div id="cons-erro" class="erro-box" style="display:none;"></div>
+  <div id="cons-vazio" class="categoria-section" style="display:none;">
+    <span style="color:var(--muted);font-size:0.85rem;">Nenhuma fatura salva ainda.</span>
+  </div>
+  <section id="sec-cons-mes" style="display:none;">
+    <div class="categoria-section">
+      <h3>Mês:
+        <select id="cons-mes-sel" class="input-select" style="display:inline-block;width:auto;padding:4px 8px;font-size:0.85rem;"></select>
+        · Total do mês: <strong id="cons-mes-total"></strong>
+      </h3>
+      <div id="cons-mes-corpo"></div>
+    </div>
+  </section>
+  <section id="sec-cons-proj" style="display:none;">
+    <div class="categoria-section">
+      <h3>Projeção dos próximos meses <small style="color:var(--muted);font-weight:400">(parcelas restantes + recorrentes, todas as faturas)</small></h3>
+      <div id="cons-proj-lista"></div>
     </div>
   </section>
 </section>
@@ -1665,7 +1712,6 @@ function renderizarTabela() {
   const thead = document.getElementById("table-thead");
   const tbody = document.getElementById("table-tbody");
   const footer = document.getElementById("table-footer");
-  const catLista = document.getElementById("categoria-lista");
 
   const cols = [
     {key:"data", label:"Data"},
@@ -1760,7 +1806,7 @@ function renderizarTabela() {
     <span>Soma: ${somaStr}</span>
   `;
 
-  // Totais por categoria (débitos)
+  // Totais por categoria (débitos) — dual: barras ou pizza
   const porCat = {};
   transacoesFiltradas.forEach(t => {
     if (parseFloat(t.valor) > 0) {
@@ -1768,16 +1814,7 @@ function renderizarTabela() {
       porCat[c] = (porCat[c] || 0) + parseFloat(t.valor);
     }
   });
-  const catEntries = Object.entries(porCat).sort((a,b) => b[1] - a[1]);
-  const max = catEntries[0]?.[1] || 0;
-  catLista.innerHTML = catEntries.map(([cat, val]) => {
-    const pct = max > 0 ? Math.round((val / max) * 100) : 0;
-    return `<div class="categoria-item">
-      <span class="cat-name">${cat}</span>
-      <div class="cat-bar-container"><div class="cat-bar" style="width:${pct}%; background:${corCategoria(cat)}"></div></div>
-      <span class="cat-valor">${formatarMoeda(val)}</span>
-    </div>`;
-  }).join("");
+  renderCategoriasDual("categoria-lista", porCat);
 
   // Projeção de parcelas futuras (usa sempre todas as transacoes da fatura)
   projetarParcelas();
@@ -2114,6 +2151,76 @@ function abrirDicionario() {
 document.getElementById("btn-dicionario").onclick = abrirDicionario;
 document.getElementById("btn-voltar-dicionario").onclick = () => mostrarTelas(faturaAtual ? "viewer" : "upload");
 
+// ===== Pizza + toggle de vista (Barras/Pizza) — usado na fatura e no consolidado =====
+
+// Pizza em conic-gradient + legenda (sem biblioteca). itens: [[rotulo, valorNum], ...]
+function htmlPizza(itens) {
+  const total = itens.reduce((acc, [, v]) => acc + v, 0);
+  if (!total) return '<span style="color:var(--muted);font-size:0.85rem;">Sem débitos no período.</span>';
+  const top = itens.slice(0, 8);
+  const resto = itens.slice(8).reduce((acc, [, v]) => acc + v, 0);
+  if (resto > 0) top.push(["Outros", resto]);
+
+  let acc = 0;
+  const segs = top.map(([rotulo, v]) => {
+    const pct = (v / total) * 100;
+    const seg = `${corCategoria(rotulo)} ${acc}% ${acc + pct}%`;
+    acc += pct;
+    return seg;
+  }).join(",");
+
+  const legenda = top.map(([rotulo, v]) =>
+    `<div class="pl-linha"><span class="pizza-cor" style="background:${corCategoria(rotulo)}"></span>` +
+    `<span>${escHtml(rotulo)}</span><span class="pl-valor">${formatarMoeda(v)} · ${((v / total) * 100).toFixed(0)}%</span></div>`
+  ).join("");
+
+  return `<div class="pizza-wrap"><div class="pizza" style="background:conic-gradient(${segs})"></div>` +
+         `<div class="pizza-legenda">${legenda}</div></div>`;
+}
+
+// Toggle: alterna entre os dois modos de um bloco de categorias.
+// O estado fica em dataset.vista do container pai (padrão "pizza").
+function htmlToggleVista(containerId) {
+  return `<div class="vista-toggle" role="group" aria-label="Visualização">
+    <button class="vt-btn" onclick="alternarVista('${containerId}','barras',this)">Barras</button>
+    <button class="vt-btn ativo" onclick="alternarVista('${containerId}','pizza',this)">Pizza</button>
+  </div>`;
+}
+
+function alternarVista(containerId, vista, btn) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  container.dataset.vista = vista;
+  container.querySelectorAll(":scope > .barras, :scope > .pizza-mod").forEach(el => {
+    el.style.display = (el.classList.contains(vista === "pizza" ? "pizza-mod" : "barras")) ? "" : "none";
+  });
+  btn.parentElement.querySelectorAll(".vt-btn").forEach(b => b.classList.toggle("ativo", b === btn));
+}
+
+// Render único das duas vistas de um mapa categoria -> valor.
+// PADRÃO = pizza; as barras (vista antiga, mesmo layout de antes) vão
+// pré-renderizadas e escondidas, prontas para o toggle.
+function renderCategoriasDual(containerId, porCat) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  const itens = Object.entries(porCat).sort((a, b) => b[1] - a[1]);
+  const max = itens[0]?.[1] || 0;
+
+  const barras = itens.map(([cat, val]) => {
+    const pct = max > 0 ? Math.round((val / max) * 100) : 0;
+    return `<div class="categoria-item">
+      <span class="cat-name">${escHtml(cat)}</span>
+      <div class="cat-bar-container"><div class="cat-bar" style="width:${pct}%;background:${corCategoria(cat)}"></div></div>
+      <span class="cat-valor">${formatarMoeda(val)}</span>
+    </div>`;
+  }).join("");
+
+  container.innerHTML = htmlToggleVista(containerId) +
+    `<div class="barras" style="display:none;">${barras}</div>` +
+    `<div class="pizza-mod">${htmlPizza(itens)}</div>`;
+  container.dataset.vista = "pizza";
+}
+
 // ===== Comparativo mês a mês =====
 async function abrirComparativo() {
   mostrarTelas("comparativo");
@@ -2213,6 +2320,96 @@ function renderizarAnomaliasComparativo(c) {
 // Bindings (perto dos bindings de btn-dicionario):
 document.getElementById("btn-comparativo").onclick = abrirComparativo;
 document.getElementById("btn-voltar-comparativo").onclick = () =>
+  mostrarTelas(faturaAtual ? "viewer" : "upload");
+
+// ===== Consolidado: todas as faturas somadas por mês + projeção =====
+let consolidadoCache = null;
+
+async function abrirConsolidado() {
+  mostrarTelas("consolidado");
+  consolidadoCache = null;   // sempre recarrega (upload/delete deixam stale)
+  await carregarConsolidado();
+}
+
+async function carregarConsolidado() {
+  const erroEl = document.getElementById("cons-erro");
+  const vazioEl = document.getElementById("cons-vazio");
+  erroEl.style.display = "none";
+  vazioEl.style.display = "none";
+  document.getElementById("sec-cons-mes").style.display = "none";
+  document.getElementById("sec-cons-proj").style.display = "none";
+
+  let c;
+  try {
+    c = await apiGET("/consolidado");
+  } catch (e) {
+    erroEl.textContent = `Não foi possível carregar: ${e.message}`;
+    erroEl.style.display = "block";
+    return;
+  }
+  if (!c.meses || c.meses.length === 0) {
+    vazioEl.style.display = "block";
+    return;
+  }
+
+  consolidadoCache = c;
+  // Mês mais recente como padrão
+  const sel = document.getElementById("cons-mes-sel");
+  sel.innerHTML = c.meses.map(m => {
+    const label = m.split("-").reverse().join("/");
+    return `<option value="${m}">${label} — ${formatarMoeda(c.totais_mes[m])}</option>`;
+  }).join("");
+  sel.value = c.meses[c.meses.length - 1];
+  sel.onchange = renderConsMes;
+  renderConsMes();
+  renderConsProj(c);
+  document.getElementById("sec-cons-mes").style.display = "block";
+  document.getElementById("sec-cons-proj").style.display = "block";
+}
+
+function renderConsMes() {
+  const c = consolidadoCache;
+  const mes = document.getElementById("cons-mes-sel").value;
+  document.getElementById("cons-mes-total").textContent = formatarMoeda(c.totais_mes[mes]);
+  const porCat = {};
+  Object.entries(c.por_categoria).forEach(([cat, pm]) => {
+    if (pm[mes] !== undefined) porCat[cat] = parseFloat(pm[mes]);
+  });
+  renderCategoriasDual("cons-mes-corpo", porCat);
+}
+
+function renderConsProj(c) {
+  const lista = document.getElementById("cons-proj-lista");
+  const chaves = Object.keys(c.projecao || {});
+  if (!chaves.length) {
+    lista.innerHTML = '<span style="color:var(--muted);font-size:0.85rem;">Sem parcelas nem recorrentes pendentes.</span>';
+    return;
+  }
+  let maxTotal = 0;
+  chaves.forEach(k => { const v = parseFloat(c.projecao[k].total); if (v > maxTotal) maxTotal = v; });
+  lista.innerHTML = chaves.map((k, idx) => {
+    const bloco = c.projecao[k];
+    const pct = maxTotal > 0 ? Math.round((parseFloat(bloco.total) / maxTotal) * 100) : 0;
+    const label = k.split("-").reverse().join("/");
+    const detalhes = bloco.linhas.map(l =>
+      `<div style="display:none;font-size:0.8rem;color:var(--muted);padding-left:16px;border-bottom:1px solid var(--border);">
+        <span>${escHtml(l.descricao)}</span>
+        <span style="float:right">${l.cartao ? escHtml(l.cartao) + " · " : ""}${l.info === "Recorrente"
+          ? '<span class="badge-proj-recorrente">' + ICONE_RECORRENTE + 'Recorrente</span> · ' + formatarMoeda(l.valor)
+          : "parcela " + escHtml(l.info) + " · " + formatarMoeda(l.valor)}</span>
+      </div>`).join("");
+    return `<div class="categoria-item" style="cursor:pointer" onclick="toggleProjecao(this)">
+        <span class="cat-name">${label}</span>
+        <div class="cat-bar-container" style="flex:1"><div class="cat-bar" style="width:${pct}%;background:${corCategoria(label)};"></div></div>
+        <span class="cat-valor">${formatarMoeda(bloco.total)}</span>
+      </div>
+      <div class="projecao-detalhes" style="display:${idx === 0 ? "block" : "none"}">${detalhes}</div>`;
+  }).join("");
+}
+
+// Bindings (perto dos bindings do Comparativo):
+document.getElementById("btn-consolidado").onclick = abrirConsolidado;
+document.getElementById("btn-voltar-consolidado").onclick = () =>
   mostrarTelas(faturaAtual ? "viewer" : "upload");
 document.getElementById("btn-salvar-regras").onclick = salvarRegrasDic;
 document.getElementById("btn-recategorizar").onclick = aplicarEmTodasFaturas;

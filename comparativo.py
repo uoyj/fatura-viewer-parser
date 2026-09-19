@@ -103,3 +103,87 @@ def calcular_comparativo(registros: list[dict]) -> dict:
         "anomalias_categoria": anomalias_categoria,
         "anomalias_transacao": anomalias_transacao,
     }
+
+
+CAP_MESES = 12  # mesmo teto do projetarParcelas() do frontend
+
+
+def _add_months(y: int, m: int, k: int) -> tuple[int, int]:
+    """(ano, mês) + k meses, com virada de ano."""
+    total = y * 12 + (m - 1) + k
+    return total // 12, total % 12 + 1
+
+
+def calcular_consolidado(registros: list[dict], recorrentes: set[str]) -> dict:
+    """
+    Visão consolidada: reusa a agregação histórica do calcular_comparativo
+    e adiciona a projeção futura agregando TODAS as faturas.
+
+    recorrentes: set de descrições normalizadas (mesma chave do
+    data/recorrentes.json — upper + espaços colapsados).
+
+    Retorna tudo do comparativo + "projecao":
+      {"2026-10": {"total": "180.00",
+                   "linhas": [{"descricao", "cartao", "valor", "info"}]},
+       ...}
+    info = "N/M" (parcela projetada) ou "Recorrente".
+    """
+    base = calcular_comparativo(registros)
+    proj: dict[str, dict] = {}
+
+    for reg in registros:
+        p = reg.get("payload") or {}
+        fech = str(p.get("fechamento") or "")
+        if not fech:
+            continue
+        try:
+            y, m, _ = fech.split("-")
+            y, m = int(y), int(m)
+        except ValueError:
+            continue
+
+        for t in p.get("transacoes") or []:
+            try:
+                valor = Decimal(str(t["valor"]))
+            except Exception:
+                continue
+            if valor <= 0:
+                continue
+
+            desc = " ".join(str(t.get("descricao") or "").split()).upper()
+            pa, pt = t.get("parcela_atual"), t.get("parcela_total")
+
+            if desc in recorrentes:
+                meses = range(1, CAP_MESES + 1)
+                info_fn = lambda k: "Recorrente"
+            elif isinstance(pa, int) and isinstance(pt, int) and 0 < pa < pt:
+                meses = range(1, min(pt - pa, CAP_MESES) + 1)
+                info_fn = lambda k: f"{pa + k}/{pt}"
+            else:
+                continue
+
+            for k in meses:
+                ny, nm = _add_months(y, m, k)
+                key = f"{ny:04d}-{nm:02d}"
+                bloco = proj.setdefault(key, {"total": Decimal("0"), "linhas": []})
+                bloco["total"] += valor
+                bloco["linhas"].append({
+                    "descricao": t.get("descricao") or "",
+                    "cartao": t.get("cartao") or "",
+                    "valor": str(valor),
+                    "info": info_fn(k),
+                })
+
+    for bloco in proj.values():
+        bloco["linhas"].sort(key=lambda l: Decimal(l["valor"]), reverse=True)
+
+    return {
+        "meses": base["meses"],
+        "totais_mes": base["totais_mes"],
+        "por_categoria": base["por_categoria"],
+        # Total agregado é quantizado em 2 casas ("180.00"): o histórico do
+        # comparativo mantém str(Decimal) cru — aqui o valor é a SOMA de N
+        # transações de uma ou mais faturas e serve de total de mês.
+        "projecao": {m: {"total": f"{b['total']:.2f}", "linhas": b["linhas"]}
+                     for m, b in sorted(proj.items())},
+    }
