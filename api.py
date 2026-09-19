@@ -15,6 +15,9 @@ Endpoints:
   GET    /overrides        — overrides manuais globais (data/overrides.json)
   PUT    /overrides/{desc} — grava override da descrição normalizada
   DELETE /overrides/{desc} — remove override (404 se não existir)
+  GET    /recorrentes      — gastos recorrentes (data/recorrentes.json)
+  PUT    /recorrentes/{desc}    — marca descrição como recorrente (flag global)
+  DELETE /recorrentes/{desc}    — desmarca (404 se não estiver marcada)
   POST   /recategorizar    — re-aplica regras+overrides em todas as faturas
 
 Run:
@@ -43,10 +46,12 @@ from parsers.sofisa_2026_09 import ParserError
 from categorizer import (
     aplicar_overrides,
     carregar_overrides,
+    carregar_recorrentes,
     carregar_regras,
     categorizar,
     normalizar_descricao,
     salvar_overrides,
+    salvar_recorrentes,
     salvar_regras,
     validar_regras,
 )
@@ -61,6 +66,7 @@ UPLOADS_DIR = DATA_DIR / "uploads"
 JSONL_PATH = DATA_DIR / "faturas.jsonl"
 CATEGORIAS_PATH = DATA_DIR / "categorias.json"
 OVERRIDES_PATH = DATA_DIR / "overrides.json"
+RECORRENTES_PATH = DATA_DIR / "recorrentes.json"
 
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -364,6 +370,52 @@ async def delete_override(descricao: str):
 
     del overrides[chave]
     salvar_overrides(overrides, OVERRIDES_PATH)
+    return {"ok": True, "chave": chave}
+
+
+@app.get("/recorrentes")
+async def get_recorrentes():
+    """
+    Gastos recorrentes: {descricao_normalizada: true}.
+
+    Flag GLOBAL do usuário (mesma chave normalizada dos overrides), ortogonal a
+    categoria e a parcela: um item que se repete todo mês (WELLHUB, Apple Bill,
+    Spotify...). A flag NÃO é injetada nas transações do payload — o cliente
+    consulta este endpoint e cruza localmente, para que o estado do usuário não
+    divirja do que está gravado no jsonl.
+    """
+    return carregar_recorrentes(RECORRENTES_PATH)
+
+
+@app.put("/recorrentes/{descricao}")
+async def put_recorrente(descricao: str):
+    """
+    Marca a descrição normalizada como gasto recorrente. Sem body.
+
+    200 {"ok": true, "chave": "<descricao normalizada>"}.
+    """
+    chave = normalizar_descricao(descricao)
+    if not chave:
+        return _erro422("Descrição vazia")
+
+    recorrentes = carregar_recorrentes(RECORRENTES_PATH)
+    recorrentes[chave] = True
+    salvar_recorrentes(recorrentes, RECORRENTES_PATH)
+
+    return {"ok": True, "chave": chave}
+
+
+@app.delete("/recorrentes/{descricao}")
+async def delete_recorrente(descricao: str):
+    """Desmarca a descrição. 404 se não estiver marcada como recorrente."""
+    chave = normalizar_descricao(descricao)
+    recorrentes = carregar_recorrentes(RECORRENTES_PATH)
+
+    if chave not in recorrentes:
+        raise HTTPException(status_code=404, detail="Recorrente não encontrado")
+
+    del recorrentes[chave]
+    salvar_recorrentes(recorrentes, RECORRENTES_PATH)
     return {"ok": True, "chave": chave}
 
 

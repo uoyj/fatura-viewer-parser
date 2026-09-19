@@ -36,7 +36,7 @@ import json
 import logging
 import re
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 from schemas import Fatura
 
@@ -46,6 +46,7 @@ logger = logging.getLogger("categorizer")
 DATA_DIR = Path("data")
 CATEGORIAS_PATH = DATA_DIR / "categorias.json"
 OVERRIDES_PATH = DATA_DIR / "overrides.json"
+RECORRENTES_PATH = DATA_DIR / "recorrentes.json"
 
 # Categoria de fallback quando nenhuma regra casa.
 OUTROS = "Outros"
@@ -209,6 +210,35 @@ def carregar_overrides(path: Path | str | None = None) -> dict[str, str]:
 def salvar_overrides(overrides: dict[str, str], path: Path | str | None = None) -> None:
     """Grava {descricao_normalizada: categoria} em data/overrides.json."""
     _escrever_json(_resolver(path, OVERRIDES_PATH), dict(overrides))
+
+
+# --- Recorrentes (flag global por descrição; ortogonal a categoria e parcela) ---
+
+def carregar_recorrentes(path: Path | str | None = None) -> dict[str, Any]:
+    """
+    Carrega as descrições marcadas como gasto recorrente.
+
+    Formato: {descricao_normalizada: true}. Leitura tolerante: arquivo ausente
+    → {}. Valores falsy são descartados (false/null = não marcado); valores
+    dict são preservados como estão, o que deixa espaço para metadata futura
+    sem migração e sem perder o dado num load→save da API.
+    """
+    path = _resolver(path, RECORRENTES_PATH)
+    data = _ler_json(path)
+
+    if data is None:
+        return {}
+    if not isinstance(data, dict):
+        raise ValueError(
+            f"{path} deve conter um objeto JSON ({{descricao_normalizada: true}})"
+        )
+
+    return {k: v for k, v in data.items() if isinstance(k, str) and v}
+
+
+def salvar_recorrentes(recorrentes: dict[str, Any], path: Path | str | None = None) -> None:
+    """Grava {descricao_normalizada: true} em data/recorrentes.json."""
+    _escrever_json(_resolver(path, RECORRENTES_PATH), dict(recorrentes))
 
 
 def aplicar_overrides(

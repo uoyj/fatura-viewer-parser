@@ -434,6 +434,47 @@ select.badge-categoria.aprendido {
   outline-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.15);
 }
+
+/* ===== GASTO RECORRENTE (flag global por descrição) ===== */
+/* Toggle na célula de Parcela: "sem parcelas, mas repete todo mês" */
+.badge-recorrente {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.2;
+  margin-left: 4px;
+  padding: 1px 5px;
+  cursor: pointer;
+  vertical-align: middle;
+  outline: 2px solid transparent;   /* reservado: evita layout shift no flash */
+  outline-offset: 1px;
+  transition: outline-color 250ms ease, box-shadow 250ms ease,
+              border-color 250ms ease, color 250ms ease;
+}
+.badge-recorrente:hover { border-color: rgba(56, 189, 248, 0.5); color: var(--text); }
+.badge-recorrente:focus-visible { outline-color: var(--accent); }
+.badge-recorrente:disabled { opacity: 0.55; cursor: progress; }
+.badge-recorrente.ativo {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: rgba(56, 189, 248, 0.12);
+}
+.badge-recorrente.aprendido {
+  outline-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.15);
+}
+/* 🔁 discreto ao lado da descrição: lembrete de que o item é projetado indefinidamente */
+.marca-recorrente { color: var(--accent); font-size: 0.8rem; margin-left: 4px; cursor: help; }
+/* Badge "recorrente" nos blocos da projeção — distinto do badge de parcela N/M */
+.badge-proj-recorrente {
+  border: 1px solid rgba(56, 189, 248, 0.45);
+  border-radius: 6px;
+  color: var(--accent);
+  font-size: 0.7rem;
+  padding: 0 4px;
+}
 .valor-positivo { color: var(--text); font-weight: 500; }
 .valor-negativo { color: var(--green); font-weight: 600; }
 
@@ -725,6 +766,7 @@ let transacoesFiltradas = [];  // transacoes apos filtro+sort
 let sortConfig = { key: "data", dir: 'asc' };
 let selectsPopulados = false;  // controle: popular selects só uma vez por fatura
 let aprendizadoFlash = null;   // { chave, expira } — destaca a célula após re-render
+let recorrentesSet = new Set(); // descrições normalizadas marcadas como recorrentes (GET /recorrentes)
 
 // ===== Utils =====
 function formatarMoeda(v) {
@@ -832,6 +874,7 @@ async function init() {
     console.error("Erro carregando parsers:", e);
   }
 
+  await carregarRecorrentes();   // flag global: precisa antes do 1º render
   await carregarFaturas();
 }
 
@@ -892,6 +935,9 @@ async function carregarFatura(id) {
 
     // Reset sort ao trocar de fatura
     sortConfig = { key: "data", dir: 'asc' };
+
+    // Flag global de recorrentes: recarrega a cada fatura para não ficar stale
+    await carregarRecorrentes();
 
     renderizarViewer();
     mostrarTelas("viewer");
@@ -1153,7 +1199,7 @@ function marcarAprendizado(chave) {
   setTimeout(() => {
     if (!aprendizadoFlash || aprendizadoFlash.chave !== chave) return;
     aprendizadoFlash = null;
-    document.querySelectorAll("select.badge-categoria.aprendido")
+    document.querySelectorAll("select.badge-categoria.aprendido, button.badge-recorrente.aprendido")
       .forEach(el => el.classList.remove("aprendido"));
   }, 850);
 }
@@ -1194,6 +1240,69 @@ async function aprenderCategoria(sel) {
   marcarAprendizado(chave);
   aplicarFiltros();   // re-render: tabela + totais por categoria na hora
   console.log(`[categoria] "${nova}" ensinada para ${afetadas} transação(ões) — chave "${chave}"`);
+}
+
+// ===== Gasto recorrente (flag global por descrição normalizada) =====
+//
+// Ortogonal a categoria e a parcela: marca itens que repetem todo mês sem
+// parcelamento (WELLHUB, Apple Bill, Spotify...). O toggle vive na célula de
+// Parcela porque é ali que a ideia se lê: "sem parcelas, mas repete".
+// Mesma UX do ensino de categoria: PUT/DELETE + flash de ~800ms + aplica em
+// todas as linhas com a mesma descrição normalizada da fatura atual.
+
+const TOOLTIP_RECORRENTE = "Marcar como gasto recorrente — projeta este valor nos próximos 12 meses (vale para todas as faturas)";
+const TOOLTIP_RECORRENTE_ATIVO = "Gasto recorrente — projetado indefinidamente. Clique para desmarcar.";
+
+function ehRecorrente(t) {
+  return recorrentesSet.has(normalizarDescricao(t.descricao || ""));
+}
+
+// Carrega a flag global. Falha não derruba o viewer: sem a lista, nenhuma
+// linha aparece marcada (e o console avisa).
+async function carregarRecorrentes() {
+  try {
+    const dados = await apiGET("/recorrentes");
+    recorrentesSet = new Set(Object.keys(dados || {}));
+  } catch (e) {
+    recorrentesSet = new Set();
+    console.warn("Não foi possível carregar /recorrentes:", e.message);
+  }
+}
+
+async function alternarRecorrente(btn) {
+  if (btn.disabled) return;
+  const t = (faturaAtual?.transacoes || []).find(x => String(x.id) === String(btn.dataset.id));
+  if (!t) return;
+
+  const marcado = ehRecorrente(t);
+  const chaveLocal = normalizarDescricao(t.descricao || "");
+  let chave = chaveLocal;
+
+  btn.disabled = true;
+  try {
+    if (marcado) {
+      await apiDELETE(`/recorrentes/${encodeURIComponent(t.descricao)}`);
+    } else {
+      // t.descricao CRUA — o backend normaliza (chave = descrição normalizada)
+      const resp = await apiPUT(`/recorrentes/${encodeURIComponent(t.descricao)}`, {});
+      if (resp && resp.chave) chave = resp.chave;   // backend é a fonte da verdade
+    }
+  } catch (e) {
+    btn.disabled = false;
+    alert(`Não foi possível ${marcado ? "desmarcar" : "marcar"} como recorrente: ${e.message}`);
+    return;
+  }
+
+  // Flag GLOBAL por descrição normalizada: vale para TODAS as linhas iguais
+  if (marcado) recorrentesSet.delete(chave);
+  else recorrentesSet.add(chave);
+
+  marcarAprendizado(chave);   // mesmo flash "aprendido" (outline --accent ~800ms)
+  aplicarFiltros();           // re-render: tabela (🔁 + toggle) e projeção
+
+  const afetadas = faturaAtual.transacoes
+    .filter(x => normalizarDescricao(x.descricao || "") === chave).length;
+  console.log(`[recorrente] ${marcado ? "desmarcado" : "marcado"} "${chave}" — ${afetadas} transação(ões)`);
 }
 
 // ===== Render tabela =====
@@ -1248,11 +1357,25 @@ function renderizarTabela() {
         style="${catStyle}"
         onchange="aprenderCategoria(this)">${opcoesCategoriaSelect(catsSelect, t.categoria)}</select>`;
 
+    // Toggle de gasto recorrente: vive na célula de Parcela ("sem parcelas,
+    // mas repete") e usa a MESMA UX do ensino de categoria (clique → PUT/DELETE
+    // + flash). O 🔁 na descrição é o lembrete de que o item é projetado sempre.
+    const rec = ehRecorrente(t);
+    const recBtn = `<button class="badge-recorrente${rec ? " ativo" : ""}"
+        data-id="${escHtml(t.id)}"
+        title="${rec ? TOOLTIP_RECORRENTE_ATIVO : TOOLTIP_RECORRENTE}"
+        aria-label="${TOOLTIP_RECORRENTE}"
+        aria-pressed="${rec}"
+        onclick="alternarRecorrente(this)">🔁</button>`;
+    const marcaRec = rec
+      ? ` <span class="marca-recorrente" title="${TOOLTIP_RECORRENTE_ATIVO}">🔁</span>`
+      : "";
+
     return `<tr>
       <td>${formatarData(t.data)}</td>
-      <td>${t.descricao || ""}</td>
+      <td>${t.descricao || ""}${marcaRec}</td>
       <td>${t.cartao || "—"}</td>
-      <td><span class="badge badge-parcela">${formatarParcela(t.parcela_atual, t.parcela_total)}</span></td>
+      <td><span class="badge badge-parcela">${formatarParcela(t.parcela_atual, t.parcela_total)}</span>${recBtn}</td>
       <td>${catHtml}</td>
       <td class="${isNeg ? 'valor-negativo' : 'valor-positivo'}">${valorStr}</td>
     </tr>`;
@@ -1263,9 +1386,10 @@ function renderizarTabela() {
   if (aprendizadoFlash) {
     if (aprendizadoFlash.expira > Date.now()) {
       const alvo = aprendizadoFlash.chave;
-      tbody.querySelectorAll("select.badge-categoria").forEach(sel => {
-        const tx = faturaAtual.transacoes.find(x => String(x.id) === String(sel.dataset.id));
-        if (tx && normalizarDescricao(tx.descricao) === alvo) sel.classList.add("aprendido");
+      // Vale para os DOIS controles: o select de categoria e o toggle 🔁 recorrente
+      tbody.querySelectorAll("select.badge-categoria, button.badge-recorrente").forEach(el => {
+        const tx = faturaAtual.transacoes.find(x => String(x.id) === String(el.dataset.id));
+        if (tx && normalizarDescricao(tx.descricao) === alvo) el.classList.add("aprendido");
       });
     } else {
       aprendizadoFlash = null;
@@ -1319,44 +1443,56 @@ function projetarParcelas() {
 
   const base = new Date(fechamento + "T12:00:00");
   const porMes = {}; // { "AAAA-MM": { mesLabel, total, linhas: [{...}] } }
+  const CAP_MESES = 12;   // mesmo teto das parcelas
+
+  const adicionar = (t, k, valor, infoParcela) => {
+    const d = new Date(base.getTime());
+    d.setMonth(d.getMonth() + k);
+
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const key = `${y}-${m}`;
+    const label = `${m}/${y}`;
+
+    if (!porMes[key]) {
+      porMes[key] = { mesLabel: label, total: 0, linhas: [] };
+    }
+
+    porMes[key].total += valor;
+    porMes[key].linhas.push({
+      descricao: t.descricao || "",
+      cartao: t.cartao || "",
+      parcela: infoParcela,              // "N/M" nas parcelas; null = recorrente
+      recorrente: infoParcela === null,
+      valor: valor
+    });
+  };
 
   faturaAtual.transacoes.forEach(t => {
+    const val = parseFloat(t.valor);
+    if (!(val > 0)) return;
+
+    // RECORRENTE VENCE: item marcado como recorrente é projetado como mensal
+    // indefinido (teto de 12 meses) e tem as parcelas restantes ignoradas —
+    // assim a mesma compra nunca é contada duas vezes na projeção.
+    if (ehRecorrente(t)) {
+      for (let k = 1; k <= CAP_MESES; k++) adicionar(t, k, val, null);
+      return;
+    }
+
     const pa = parseInt(t.parcela_atual);
     const pt = parseInt(t.parcela_total);
-    const val = parseFloat(t.valor);
 
-    if (pa != null && pt != null && pa > 0 && pa < pt && val > 0) {
-      const restantes = pt - pa;
-      const cap = Math.min(restantes, 12);
-
-      for (let k = 1; k <= cap; k++) {
-        const d = new Date(base.getTime());
-        d.setMonth(d.getMonth() + k);
-
-        const y = d.getFullYear();
-        const m = String(d.getMonth() + 1).padStart(2, "0");
-        const key = `${y}-${m}`;
-        const label = `${m}/${y}`;
-
-        if (!porMes[key]) {
-          porMes[key] = { mesLabel: label, total: 0, linhas: [] };
-        }
-
-        porMes[key].total += val;
-        porMes[key].linhas.push({
-          descricao: t.descricao || "",
-          cartao: t.cartao || "",
-          parcela: `${pa + k}/${pt}`,
-          valor: val
-        });
-      }
+    if (pa != null && pt != null && pa > 0 && pa < pt) {
+      const cap = Math.min(pt - pa, CAP_MESES);
+      for (let k = 1; k <= cap; k++) adicionar(t, k, val, `${pa + k}/${pt}`);
     }
   });
 
   const chaves = Object.keys(porMes).sort();
 
   if (chaves.length === 0) {
-    lista.innerHTML = '<span style="color:var(--muted);font-size:0.85rem;">Sem parcelas pendentes para próximas faturas.</span>';
+    lista.innerHTML = '<span style="color:var(--muted);font-size:0.85rem;">Sem parcelas nem gastos recorrentes pendentes para próximas faturas.</span>';
     return;
   }
 
@@ -1372,7 +1508,9 @@ function projetarParcelas() {
       .map(l => `
         <div class="projecao-linha" style="display:none;font-size:0.8rem;color:var(--muted);padding-left:16px;border-bottom:1px solid var(--border);">
           <span>${l.descricao}</span>
-          <span style="float:right">${l.cartao} · parcela ${l.parcela} · ${formatarMoeda(l.valor)}</span>
+          <span style="float:right">${l.cartao} · ${l.recorrente
+            ? '<span class="badge-proj-recorrente">🔁 recorrente</span>'
+            : `parcela ${l.parcela}`} · ${formatarMoeda(l.valor)}</span>
         </div>`).join("");
 
     const expanded = idx === 0 ? 'block' : 'none';

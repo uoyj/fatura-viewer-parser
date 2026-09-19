@@ -6,10 +6,14 @@ Cobre:
 - seed: data/categorias.json criado UMA vez; depois o arquivo é a fonte da verdade
 - precedência: override manual global > regras > "Outros"
 - API: GET/PUT /categorias, GET/PUT/DELETE /overrides, POST /recategorizar
+- API: GET/PUT/DELETE /recorrentes (flag global de gasto recorrente), incluindo
+  a independência em relação a overrides/categorias e o fato de a flag NÃO ser
+  injetada no payload das transações
 
 ISOLAMENTO OBRIGATÓRIO: nenhum teste toca o data/ real do usuário.
-O fixture `isolado` monkeypatcha categorias.json, overrides.json E
-faturas.jsonl (api + categorizer) para um tmp_path que o pytest apaga.
+O fixture `isolado` monkeypatcha categorias.json, overrides.json,
+recorrentes.json E faturas.jsonl (api + categorizer) para um tmp_path que o
+pytest apaga.
 
 Rode: pytest tests/test_personalizacao.py -x
 """
@@ -52,11 +56,13 @@ def isolado(tmp_path, monkeypatch):
     monkeypatch.setattr(api, "JSONL_PATH", tmp_path / "faturas.jsonl")
     monkeypatch.setattr(api, "CATEGORIAS_PATH", tmp_path / "categorias.json")
     monkeypatch.setattr(api, "OVERRIDES_PATH", tmp_path / "overrides.json")
+    monkeypatch.setattr(api, "RECORRENTES_PATH", tmp_path / "recorrentes.json")
 
     # categorizer.py (usado direto nos testes unitários)
     monkeypatch.setattr(categorizer, "DATA_DIR", tmp_path)
     monkeypatch.setattr(categorizer, "CATEGORIAS_PATH", tmp_path / "categorias.json")
     monkeypatch.setattr(categorizer, "OVERRIDES_PATH", tmp_path / "overrides.json")
+    monkeypatch.setattr(categorizer, "RECORRENTES_PATH", tmp_path / "recorrentes.json")
 
     (tmp_path / "uploads").mkdir(parents=True, exist_ok=True)
     return tmp_path
@@ -372,6 +378,91 @@ class TestAPIOverrides:
 
     def test_get_overrides_sem_arquivo(self, client):
         assert client.get("/overrides").json() == {}
+
+
+# ---------------------------------------------------------------------------
+# 5b. API — recorrentes (flag global, ortogonal a categoria/parcela)
+# ---------------------------------------------------------------------------
+
+class TestAPIRecorrentes:
+
+    def test_put_marca_e_get_lista_chave_normalizada(self, client, isolado):
+        # caixa mista + espaços extras na descrição
+        resp = client.put("/recorrentes/WellHub%20%20MarcosRicioli")
+        assert resp.status_code == 200
+        assert resp.json()["ok"] is True
+        assert resp.json()["chave"] == "WELLHUB MARCOSRICIOLI"
+
+        assert client.get("/recorrentes").json() == {"WELLHUB MARCOSRICIOLI": True}
+        assert json.loads((isolado / "recorrentes.json").read_text(encoding="utf-8")) == {
+            "WELLHUB MARCOSRICIOLI": True
+        }
+
+    def test_put_e_idempotente_e_nao_duplica(self, client):
+        client.put("/recorrentes/SPOTIFY")
+        client.put("/recorrentes/spotify")
+        client.put("/recorrentes/%20SPOTIFY%20")
+        assert client.get("/recorrentes").json() == {"SPOTIFY": True}
+
+    def test_get_recorrentes_sem_arquivo(self, client):
+        assert client.get("/recorrentes").json() == {}
+
+    def test_put_recorrente_descricao_vazia_422(self, client, isolado):
+        # path só com espaços normaliza para "" → 422 (e nada é gravado)
+        resp = client.put("/recorrentes/%20%20")
+        assert resp.status_code == 422
+        assert "erro" in resp.json()
+        assert not (isolado / "recorrentes.json").exists()
+
+    def test_delete_recorrente(self, client):
+        client.put("/recorrentes/WELLHUB MARCOSRICIOLI".replace(" ", "%20"))
+        assert client.get("/recorrentes").json() == {"WELLHUB MARCOSRICIOLI": True}
+
+        resp = client.delete("/recorrentes/wellhub%20marcosricioli")
+        assert resp.status_code == 200
+        assert resp.json()["chave"] == "WELLHUB MARCOSRICIOLI"
+        assert client.get("/recorrentes").json() == {}
+
+    def test_delete_recorrente_inexistente_404(self, client):
+        assert client.delete("/recorrentes/NAO%20EXISTE").status_code == 404
+        # marcar e desmarcar duas vezes: a segunda é 404
+        client.put("/recorrentes/TWICE")
+        assert client.delete("/recorrentes/TWICE").status_code == 200
+        assert client.delete("/recorrentes/TWICE").status_code == 404
+
+    def test_recorrente_e_independente_de_overrides_e_categorias(self, client, isolado):
+        # estado inicial: nenhum arquivo de sobreposição existe ainda
+        regras_antes = client.get("/categorias").json()
+        categorias_bytes = (isolado / "categorias.json").read_bytes()
+
+        client.put("/recorrentes/APPLE%20BILL")
+
+        # recorrente gravado, e NADA além dele
+        assert client.get("/recorrentes").json() == {"APPLE BILL": True}
+        assert client.get("/overrides").json() == {}
+        assert not (isolado / "overrides.json").exists()
+        assert client.get("/categorias").json() == regras_antes
+        assert (isolado / "categorias.json").read_bytes() == categorias_bytes
+        assert json.loads((isolado / "recorrentes.json").read_text(encoding="utf-8")) == {
+            "APPLE BILL": True
+        }
+
+    def test_marcar_recorrente_nao_altera_payload_da_fatura(self, client, isolado):
+        """A flag é estado do usuário: não entra no jsonl nem no payload servido."""
+        _gravar_jsonl(isolado / "faturas.jsonl", [
+            _payload([_transacao("WELLHUB MARCOSRICIOLI"), _transacao("SPOTIFY")])
+        ])
+        jsonl_antes = (isolado / "faturas.jsonl").read_bytes()
+
+        assert client.put("/recorrentes/WELLHUB%20MARCOSRICIOLI").status_code == 200
+
+        transacoes = client.get("/faturas/fat-0").json()["transacoes"]
+        assert len(transacoes) == 2
+        for t in transacoes:
+            assert "recorrente" not in t
+            assert set(t) == {"data", "descricao", "valor", "parcela_atual",
+                              "parcela_total", "moeda", "categoria", "cartao", "id"}
+        assert (isolado / "faturas.jsonl").read_bytes() == jsonl_antes
 
 
 # ---------------------------------------------------------------------------
