@@ -64,6 +64,14 @@ header h1 {
   justify-content: space-between;
   align-items: center;
 }
+/* FRONT 3: nada é auto-selecionado — o header fica em placeholder até clique
+   explícito (ou upload OK). Sem faturas salvas, fica desabilitado com hint. */
+.dropdown-selected.placeholder { color: var(--muted); }
+.dropdown-selected.desabilitado {
+  cursor: not-allowed;
+  opacity: 0.7;   /* contraste do placeholder: 3.00:1 (0.6) -> 3.55:1 (0.7) */
+}
+.dropdown-selected.desabilitado:hover { border-color: var(--border); }
 .dropdown-options {
   position: absolute;
   top: 100%;
@@ -189,11 +197,28 @@ header h1 {
   line-height: 1.1;
 }
 .btn-remover-regra:hover { background: rgba(248, 113, 111, 0.2); }
-.aviso-regras {
+/* Card informativo do topo do Dicionário: 3 linhas curtas em --muted */
+.dic-info-linha {
   color: var(--muted);
-  font-size: 0.78rem;
-  margin: 12px 0 8px;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  margin: 0 0 8px;
 }
+.dic-info-linha:last-child { margin-bottom: 0; }
+/* "↑ regra": promove um ensinamento manual a regra (mesma caixa dos botões da lista) */
+.btn-converter-regra {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.72rem;
+  padding: 4px 8px;
+  line-height: 1.1;
+  margin-right: 6px;
+}
+.btn-converter-regra:hover { border-color: rgba(56, 189, 248, 0.5); color: var(--text); }
 .dic-msg { font-size: 0.85rem; min-height: 20px; margin-top: 8px; }
 .dic-msg.ok { color: var(--green); }
 .dic-msg.erro { color: var(--red); }
@@ -386,18 +411,25 @@ td {
 tr:hover td { background: #0f172a; }
 
 /* ===== BADGES ===== */
+/* Caixa canônica das pílulas da célula Parcela (badge-parcela + toggle 🔁):
+   mesma fonte, padding, raio e line-height — sem isso as duas pílulas ficavam
+   com alturas diferentes e o 🔁 dançava de linha para linha. */
 .badge {
   display: inline-block;
   padding: 2px 8px;
   border-radius: 10px;
   font-size: 0.75rem;
   font-weight: 600;
+  line-height: 1.3;
   white-space: nowrap;
 }
 .badge-parcela {
   background: rgba(56, 189, 248, 0.15);
   color: var(--accent);
   border: 1px solid rgba(56, 189, 248, 0.3);
+  /* "—" e "12/12" com a MESMA largura: coluna alinhada, sem jitter */
+  min-width: 44px;
+  text-align: center;
 }
 .badge-categoria {
   border: 1px solid rgba(255,255,255,0.1);
@@ -440,12 +472,13 @@ select.badge-categoria.aprendido {
 .badge-recorrente {
   background: transparent;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 10px;      /* mesma pílula do .badge-parcela */
   color: var(--muted);
-  font-size: 0.78rem;
-  line-height: 1.2;
+  font-family: inherit;     /* <button> não herda fonte: sem isto a família difere */
+  font-size: 0.75rem;       /* mesmas métricas do .badge -> mesma altura */
+  line-height: 1.3;
   margin-left: 4px;
-  padding: 1px 5px;
+  padding: 2px 8px;
   cursor: pointer;
   vertical-align: middle;
   outline: 2px solid transparent;   /* reservado: evita layout shift no flash */
@@ -634,8 +667,10 @@ html {
 <header id="header-barra">
   <h1>fatura-viewer</h1>
   <div class="dropdown-container">
-    <div class="dropdown-selected" id="fatura-selecionada">
-      <span>Selecione uma fatura</span>
+    <!-- FRONT 3: estado inicial é placeholder — nenhuma fatura é auto-selecionada.
+         O resumo só aparece após clique explícito no dropdown ou upload OK. -->
+    <div class="dropdown-selected placeholder" id="fatura-selecionada">
+      <span>Selecione uma fatura...</span>
       <span>▼</span>
     </div>
     <div class="dropdown-options" id="fatura-options"></div>
@@ -718,7 +753,7 @@ html {
   <!-- Projeção de Parcelas Futuras -->
   <section id="sec-projecao">
     <div class="categoria-section">
-      <h3>Projeção para próximas faturas <small style="color:var(--muted);font-weight:400">(estimada — valores e datas podem variar)</small></h3>
+      <h3>Projeção para próximas faturas <small style="color:var(--muted);font-weight:400">(estimada — soma de parcelas restantes + gastos recorrentes)</small></h3>
       <div id="projecao-lista"></div>
     </div>
   </section>
@@ -731,12 +766,18 @@ html {
     <button class="btn-outline" id="btn-voltar-dicionario">Voltar</button>
   </div>
 
+  <!-- Card informativo: papel de cada coisa (topo da tela, antes das regras) -->
+  <div class="categoria-section" id="dic-info">
+    <p class="dic-info-linha">Regras: aplicadas ao processar NOVOS arquivos. Edite para melhorar o resultado automático.</p>
+    <p class="dic-info-linha">Ensino manual: sobrescreve imediatamente, em TODAS as faturas, para sempre. Remova na lista abaixo para desfazer.</p>
+    <p class="dic-info-linha">Aplicar em todas as faturas: reavaliza faturas já salvas com as regras atuais (ensinos não são afetados — já valem sempre).</p>
+  </div>
+
   <!-- Regras -->
   <div class="dic-card">
     <h3>Regras</h3>
     <div id="lista-regras"></div>
     <button class="btn-outline" id="btn-nova-regra">+ Nova regra</button>
-    <div class="aviso-regras">Ensinamentos (categorias manuais) valem imediatamente. Mudanças nas REGRAS só valem após “Aplicar em todas as faturas”.</div>
     <button class="btn-nova" id="btn-salvar-regras">Salvar regras</button>
     <div class="dic-msg" id="msg-regras"></div>
   </div>
@@ -889,18 +930,37 @@ async function carregarFaturas() {
 }
 
 // ===== Dropdown =====
+// Regra do FRONT 3: NADA é auto-selecionado. faturasCache[0] nunca vira seleção
+// implícita — o header mostra o placeholder até o usuário clicar numa opção
+// (clique explícito) ou até um upload bem-sucedido definir `faturaAtual`.
+const PLACEHOLDER_FATURA = "Selecione uma fatura...";
+
 function popularDropdownFaturas() {
   const container = document.getElementById("fatura-selecionada");
   const options = document.getElementById("fatura-options");
 
+  // Sem faturas salvas: placeholder DESABILITADO + hint do upload.
   if (faturasCache.length === 0) {
-    container.innerHTML = '<span>Selecione uma fatura</span><span>▼</span>';
+    container.className = "dropdown-selected placeholder desabilitado";
+    container.title = "Faça o upload da primeira fatura";
+    container.setAttribute("aria-disabled", "true");
+    container.innerHTML = `<span>${PLACEHOLDER_FATURA}</span><span>▼</span>`;
     options.innerHTML = "";
+    options.classList.remove("show");
     return;
   }
 
-  // Mostra a última (mais recente) por padrão
-  container.innerHTML = `<span>${formatoResumoFatura(faturasCache[0])}</span><span>▼</span>`;
+  container.removeAttribute("aria-disabled");
+  // Só mostra resumo de fatura REALMENTE carregada (clique/upload); senão placeholder.
+  if (faturaAtual) {
+    container.className = "dropdown-selected";
+    container.removeAttribute("title");
+    container.innerHTML = `<span>${formatoResumoFatura(faturaAtual)}</span><span>▼</span>`;
+  } else {
+    container.className = "dropdown-selected placeholder";
+    container.removeAttribute("title");
+    container.innerHTML = `<span>${PLACEHOLDER_FATURA}</span><span>▼</span>`;
+  }
   options.innerHTML = "";
   faturasCache.forEach(f => {
     const opt = document.createElement("div");
@@ -925,9 +985,9 @@ function formatoResumoFatura(f) {
 async function carregarFatura(id) {
   try {
     faturaAtual = await apiGET(`/faturas/${id}`);
-    // Atualizar dropdown
-    const container = document.getElementById("fatura-selecionada");
-    container.innerHTML = `<span>${formatoResumoFatura(faturaAtual)}</span><span>▼</span>`;
+    // Header do dropdown passa a refletir a fatura carregada
+    // (limpa placeholder/desabilitado numa única fonte de verdade).
+    popularDropdownFaturas();
     document.getElementById("fatura-options").classList.remove("show");
 
     // Popular selects apenas uma vez por fatura
@@ -965,14 +1025,12 @@ async function deletarFatura(id) {
     await apiDELETE(`/faturas/${id}`);
     await carregarFaturas();
 
-    // Se a fatura atual foi deletada, carregar a mais recente ou voltar pro upload
+    // Se a fatura atual foi deletada NÃO escolhemos outra sozinhos: volta ao
+    // placeholder + tela de upload e o usuário seleciona no dropdown (FRONT 3).
     if (faturaAtual && faturaAtual.id === id) {
       faturaAtual = null;
-      if (faturasCache.length > 0) {
-        carregarFatura(faturasCache[0].id);
-      } else {
-        mostrarTelas("upload");
-      }
+      popularDropdownFaturas();
+      mostrarTelas("upload");
     } else {
       // Atualiza dropdown se a fatura atual ainda existe
       popularDropdownFaturas();
@@ -1090,6 +1148,7 @@ document.getElementById("form-upload").onsubmit = async function(e) {
 
 // Dropdown da barra superior
 document.getElementById("fatura-selecionada").onclick = function() {
+  if (this.classList.contains("desabilitado")) return;   // sem faturas: só upload
   const opts = document.getElementById("fatura-options");
   opts.classList.toggle("show");
 };
@@ -1587,6 +1646,19 @@ function renderizarRegras() {
   document.getElementById("lista-regras").innerHTML = regrasTela.map(blocoRegraHtml).join("");
 }
 
+// Rola até o último bloco de regra e foca a categoria. Usado por "+ Nova regra" e
+// por "↑ regra": o bloco novo nasce EDITÁVEL — nada é persistido antes de
+// "Salvar regras".
+function focarUltimoBlocoRegra() {
+  const blocos = document.querySelectorAll("#lista-regras .regra-bloco");
+  const ultimo = blocos[blocos.length - 1];
+  if (!ultimo) return;
+  if (typeof ultimo.scrollIntoView === "function") {
+    ultimo.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }
+  ultimo.querySelector(".regra-categoria").focus();
+}
+
 // Lê o DOM para o estado — preserva edições pendentes antes de qualquer re-render.
 function sincronizarRegrasDaTela() {
   regrasTela = [...document.querySelectorAll("#lista-regras .regra-bloco")].map(b => ({
@@ -1658,11 +1730,14 @@ function renderizarOverrides() {
     return;
   }
   cont.innerHTML = `<table class="dic-tabela">
-    <thead><tr><th>Descrição</th><th>Categoria</th><th style="width:48px"></th></tr></thead>
+    <thead><tr><th>Descrição</th><th>Categoria</th><th style="width:132px"></th></tr></thead>
     <tbody>${chaves.map(k => `<tr>
       <td class="desc">${escHtml(k)}</td>
       <td>${escHtml(overridesDic[k])}</td>
-      <td style="text-align:right"><button type="button" class="btn-remover-regra btn-remover-override" data-chave="${escHtml(k)}" title="Remover ensinamento" aria-label="Remover ensinamento">×</button></td>
+      <td style="text-align:right;white-space:nowrap">
+        <button type="button" class="btn-converter-regra" data-chave="${escHtml(k)}" title="Converter ensino em regra" aria-label="Converter ensino em regra: ${escHtml(k)}">↑ regra</button>
+        <button type="button" class="btn-remover-regra btn-remover-override" data-chave="${escHtml(k)}" title="Remover ensinamento" aria-label="Remover ensinamento">×</button>
+      </td>
     </tr>`).join("")}</tbody>
   </table>`;
 }
@@ -1685,6 +1760,33 @@ async function removerOverrideDic(chave) {
     mostrarMsgDic("msg-overrides", `Não foi possível remover: ${e.message}`, "erro");
   }
   await carregarOverridesDic();   // recarrega a lista
+}
+
+// --- "↑ regra": promove um ensinamento manual a REGRA ---------------------------
+// Item 5 do FRONT 3. Cria a regra com categoria = categoria do override e padrão =
+// chave normalizada, REMOVE o override e deixa o bloco EDITÁVEL na lista de regras
+// (a persistência só acontece em "Salvar regras").
+const MSG_CONVERTER_REGRA = "Converter ensino em regra? A regra passa a casar com qualquer descrição que contenha o padrão.";
+
+async function converterOverrideEmRegra(chave) {
+  if (!(chave in overridesDic)) return;
+  if (!confirm(MSG_CONVERTER_REGRA)) return;
+
+  const categoria = overridesDic[chave] || "";
+  sincronizarRegrasDaTela();   // preserva edições pendentes das regras
+  regrasTela.push({ categoria, padroes: [chave] });
+  renderizarRegras();
+  focarUltimoBlocoRegra();
+
+  try {
+    await apiDELETE(`/overrides/${encodeURIComponent(chave)}`);
+    mostrarMsgDic("msg-overrides",
+      `Ensino convertido em regra: "${chave}" → ${categoria || "(sem categoria)"}. Revise o bloco de regras e clique em “Salvar regras”.`, "ok");
+  } catch (e) {
+    mostrarMsgDic("msg-overrides",
+      `Bloco de regra criado, mas não foi possível remover o ensino: ${e.message}`, "erro");
+  }
+  await carregarOverridesDic();   // recarrega a lista (o ensino já não deve estar lá)
 }
 
 // --- Aplicar global ---
@@ -1720,9 +1822,7 @@ document.getElementById("btn-nova-regra").onclick = () => {
   sincronizarRegrasDaTela();   // preserva edições pendentes
   regrasTela.push({ categoria: "", padroes: [] });
   renderizarRegras();
-  const blocos = document.querySelectorAll("#lista-regras .regra-bloco");
-  const ultimo = blocos[blocos.length - 1];
-  if (ultimo) ultimo.querySelector(".regra-categoria").focus();
+  focarUltimoBlocoRegra();
 };
 
 document.getElementById("lista-regras").addEventListener("click", (e) => {
@@ -1735,6 +1835,11 @@ document.getElementById("lista-regras").addEventListener("click", (e) => {
 });
 
 document.getElementById("lista-overrides").addEventListener("click", (e) => {
+  const btnConversao = e.target.closest(".btn-converter-regra");
+  if (btnConversao) {
+    converterOverrideEmRegra(btnConversao.dataset.chave);
+    return;
+  }
   const btn = e.target.closest(".btn-remover-override");
   if (!btn) return;
   removerOverrideDic(btn.dataset.chave);
