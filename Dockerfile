@@ -21,6 +21,7 @@ COPY parsers/ parsers/
 COPY registry.py .
 COPY schemas.py .
 COPY categorizer.py .
+COPY comparativo.py .
 COPY api.py .
 COPY static/ static/
 
