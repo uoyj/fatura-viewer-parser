@@ -133,6 +133,23 @@ header h1 {
   padding: 0 4px;
 }
 .dropdown-option .delete-x:hover { opacity: 1; }
+
+.cmdk-overlay { position: fixed; inset: 0; background: rgba(2,6,23,0.7); display: flex; align-items: flex-start; justify-content: center; padding-top: 12vh; z-index: 1000; }
+.cmdk-dialog { width: 100%; max-width: 560px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.5); }
+#cmdk-input { width: 100%; background: var(--bg); border: none; border-bottom: 1px solid var(--border); color: var(--text); padding: 14px 16px; font-size: 0.95rem; outline: none; }
+#cmdk-list { max-height: 320px; overflow-y: auto; padding: 6px; }
+.cmdk-mes { font-size: 0.72rem; font-weight: 600; opacity: 0.55; padding: 8px 10px 2px; }
+.cmdk-item { display: flex; justify-content: space-between; align-items: center; padding: 9px 10px; border-radius: 6px; cursor: pointer; font-size: 0.87rem; }
+.cmdk-item:hover, .cmdk-item.cmdk-ativo { background: #283548; }
+.cmdk-vazio { color: var(--muted); font-size: 0.85rem; padding: 18px; text-align: center; }
+#cmdk-footer { border-top: 1px solid var(--border); padding: 6px 12px; font-size: 0.7rem; color: var(--muted); }
+
+/* âncora Topo: seta no lugar da bolinha */
+#anchor-nav .nav-item.nav-topo { width: auto; height: auto; background: transparent; color: var(--muted); }
+#anchor-nav .nav-item.nav-topo:hover,
+#anchor-nav .nav-item.nav-topo:focus { color: var(--accent); }
+#anchor-nav .nav-item.nav-topo svg { width: 16px; height: 16px; fill: none; stroke: currentColor; }
+
 .btn-nova {
   background: var(--accent);
   color: #0f172a;
@@ -726,7 +743,8 @@ html {
   <div class="nav-item" role="link" tabindex="0" aria-label="Projeção" data-target="sec-projecao">
     <span class="tooltip">Projeção</span>
   </div>
-  <div class="nav-item" role="link" tabindex="0" aria-label="Topo" data-target="topo">
+  <div class="nav-item nav-topo" role="link" tabindex="0" aria-label="Voltar ao topo" data-target="topo">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></svg>
     <span class="tooltip">Topo</span>
   </div>
 </nav>
@@ -741,7 +759,6 @@ html {
       <span>Selecione uma fatura...</span>
       <span>▼</span>
     </div>
-    <div class="dropdown-options" id="fatura-options"></div>
   </div>
   <button class="btn-nova" id="btn-nova-fatura">Nova fatura</button>
   <button class="btn-outline" id="btn-dicionario">Dicionário</button>
@@ -925,6 +942,15 @@ html {
   </section>
 </section>
 
+<!-- ===== COMMAND PALETTE (seleção de fatura) ===== -->
+<div id="cmdk-overlay" class="cmdk-overlay" style="display:none;">
+  <div class="cmdk-dialog" role="dialog" aria-modal="true" aria-label="Selecionar fatura">
+    <input id="cmdk-input" type="text" placeholder="Buscar por banco, data, valor..." autocomplete="off">
+    <div id="cmdk-list"></div>
+    <div id="cmdk-footer">↑↓ navegar · Enter selecionar · Esc fechar</div>
+  </div>
+</div>
+
 <!-- Autocomplete do editor livre de categoria: UM datalist compartilhado,
      reconstruído com categoriasConhecidas a cada abertura do editor. -->
 <datalist id="lista-categorias"></datalist>
@@ -1077,7 +1103,6 @@ const PLACEHOLDER_FATURA = "Selecione uma fatura...";
 
 function popularDropdownFaturas() {
   const container = document.getElementById("fatura-selecionada");
-  const options = document.getElementById("fatura-options");
 
   // Sem faturas salvas: placeholder DESABILITADO + hint do upload.
   if (faturasCache.length === 0) {
@@ -1085,8 +1110,6 @@ function popularDropdownFaturas() {
     container.title = "Faça o upload da primeira fatura";
     container.setAttribute("aria-disabled", "true");
     container.innerHTML = `<span>${PLACEHOLDER_FATURA}</span><span>▼</span>`;
-    options.innerHTML = "";
-    options.classList.remove("show");
     return;
   }
 
@@ -1100,39 +1123,6 @@ function popularDropdownFaturas() {
     container.removeAttribute("title");
     container.innerHTML = `<span>${PLACEHOLDER_FATURA}</span><span>▼</span>`;
   }
-
-  options.innerHTML = "";
-
-  // Agrupa por mês de fechamento (YYYY-MM)
-  const porMes = {};
-  faturasCache.forEach(f => {
-    const mes = (f.fechamento || "").slice(0, 7) || "????-??";
-    (porMes[mes] = porMes[mes] || []).push(f);
-  });
-
-  // Meses conhecidos primeiro (mais recente → mais antigo), "????-??" por último
-  const meses = Object.keys(porMes).filter(m => m !== "????-??").sort().reverse();
-  if (porMes["????-??"]) meses.push("????-??");
-
-  meses.forEach(mes => {
-    // Cabeçalho do grupo
-    const h = document.createElement("div");
-    h.className = "dropdown-mes-header";
-    h.textContent = mes === "????-??" ? "Sem data" : mes.split("-").reverse().join("/");
-    options.appendChild(h);
-
-    // Opções do grupo (aqui estava o comentário sem código — é este bloco)
-    porMes[mes].forEach(f => {
-      const opt = document.createElement("div");
-      opt.className = "dropdown-option";
-      opt.innerHTML = `<span>${formatoResumoFatura(f)}</span><span class="delete-x" onclick="deletarFaturaDropdown(event, '${f.id}')">×</span>`;
-      opt.onclick = (e) => {
-        if (e.target.classList.contains("delete-x")) return;
-        carregarFatura(f.id);
-      };
-      options.appendChild(opt);
-    });
-  });
 }
 
 function formatoResumoFatura(f) {
@@ -1141,6 +1131,95 @@ function formatoResumoFatura(f) {
   return `${f.banco} · ${data} · ${total}`;
 }
 
+// ===== Command palette: seleção de fatura com busca (substitui o dropdown) =====
+let cmdkAberto = false;
+let cmdkAtivo = -1;
+
+function abrirCmdk() {
+  cmdkAberto = true;
+  document.getElementById("cmdk-overlay").style.display = "flex";
+  const inp = document.getElementById("cmdk-input");
+  inp.value = "";
+  renderizarCmdk("");
+  setTimeout(() => inp.focus(), 0);
+}
+
+function fecharCmdk() {
+  cmdkAberto = false;
+  document.getElementById("cmdk-overlay").style.display = "none";
+}
+
+function cmdkItensVisiveis() {
+  return [...document.querySelectorAll("#cmdk-list .cmdk-item")];
+}
+
+function renderizarCmdk(busca) {
+  const list = document.getElementById("cmdk-list");
+  const q = busca.trim().toLowerCase();
+  const filtradas = faturasCache.filter(f =>
+    !q || formatoResumoFatura(f).toLowerCase().includes(q));
+  cmdkAtivo = -1;
+
+  if (!filtradas.length) {
+    list.innerHTML = '<div class="cmdk-vazio">Nenhuma fatura encontrada.</div>';
+    return;
+  }
+  const porMes = {};
+  filtradas.forEach(f => {
+    const m = (f.fechamento || "?").slice(0, 7);
+    (porMes[m] = porMes[m] || []).push(f);
+  });
+  list.innerHTML = Object.keys(porMes).sort().reverse().map(mes => `
+    <div class="cmdk-mes">${mes === "????-??" ? "Sem data" : mes.split("-").reverse().join("/")}</div>
+    ${porMes[mes].map(f => `
+      <div class="cmdk-item" data-id="${f.id}" onclick="cmdkSelecionar('${f.id}')">
+        <span>${formatoResumoFatura(f)}</span>
+        <span class="delete-x" onclick="cmdkDeletar(event, '${f.id}')">×</span>
+      </div>`).join("")}
+  `).join("");
+}
+
+function cmdkSelecionar(id) { fecharCmdk(); carregarFatura(id); }
+
+async function cmdkDeletar(e, id) {
+  e.stopPropagation();
+  await deletarFatura(id);   // recarrega faturasCache internamente
+  if (cmdkAberto) renderizarCmdk(document.getElementById("cmdk-input").value);
+}
+
+document.getElementById("cmdk-input").addEventListener("input", function() {
+  renderizarCmdk(this.value);
+});
+document.getElementById("cmdk-input").addEventListener("keydown", function(e) {
+  const itens = cmdkItensVisiveis();
+  if (!itens.length) return;
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    e.preventDefault();
+    cmdkAtivo = e.key === "ArrowDown"
+      ? Math.min(cmdkAtivo + 1, itens.length - 1)
+      : Math.max(cmdkAtivo - 1, 0);
+    itens.forEach((el, i) => el.classList.toggle("cmdk-ativo", i === cmdkAtivo));
+    itens[cmdkAtivo].scrollIntoView({ block: "nearest" });
+  } else if (e.key === "Enter") {
+    e.preventDefault();
+    const alvo = itens[cmdkAtivo >= 0 ? cmdkAtivo : 0];
+    if (alvo) cmdkSelecionar(alvo.dataset.id);
+  } else if (e.key === "Escape") {
+    fecharCmdk();
+  }
+});
+document.getElementById("cmdk-overlay").addEventListener("mousedown", function(e) {
+  if (e.target === this) fecharCmdk();
+});
+document.addEventListener("keydown", function(e) {
+  if (e.key === "Escape" && cmdkAberto) fecharCmdk();
+  // atalho Ctrl/Cmd+K abre o palette
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k" && faturasCache.length) {
+    e.preventDefault();
+    abrirCmdk();
+  }
+});
+
 // ===== Carregar fatura específica =====
 async function carregarFatura(id) {
   try {
@@ -1148,7 +1227,6 @@ async function carregarFatura(id) {
     // Header do dropdown passa a refletir a fatura carregada
     // (limpa placeholder/desabilitado numa única fonte de verdade).
     popularDropdownFaturas();
-    document.getElementById("fatura-options").classList.remove("show");
 
     // Popular selects apenas uma vez por fatura
     selectsPopulados = false;
@@ -1340,21 +1418,11 @@ document.getElementById("form-upload").onsubmit = async function(e) {
   }
 };
 
-// Dropdown da barra superior
+// Header da barra superior (abre o command palette de faturas)
 document.getElementById("fatura-selecionada").onclick = function() {
   if (this.classList.contains("desabilitado")) return;   // sem faturas: só upload
-  const opts = document.getElementById("fatura-options");
-  opts.classList.toggle("show");
+  abrirCmdk();
 };
-
-// Fechar dropdown ao clicar fora
-document.addEventListener("click", function(e) {
-  const dd = document.getElementById("fatura-options");
-  const selected = document.getElementById("fatura-selecionada");
-  if (dd && !dd.contains(e.target) && !selected.contains(e.target)) {
-    dd.classList.remove("show");
-  }
-});
 
 // ===== Render viewer =====
 function renderizarViewer() {
