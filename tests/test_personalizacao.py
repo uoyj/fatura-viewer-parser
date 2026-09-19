@@ -1,6 +1,12 @@
 """
 Testes de personalização global de categorias (Tier 3).
 
+Padrão da suíte: cenários que diferem só nos dados de entrada usam
+@pytest.mark.parametrize; LISTAS de bodies de validação (mesmo caminho de
+código, valores parecidos) rodam em loop dentro de UM teste, com a mensagem
+do assert nomeando o caso que falhou — isso mantém a contagem de testes baixa
+sem perder nenhum caso.
+
 Cobre:
 - normalizar_descricao (upper/strip/colapso de espaços)
 - seed: data/categorias.json criado UMA vez; depois o arquivo é a fonte da verdade
@@ -14,8 +20,6 @@ ISOLAMENTO OBRIGATÓRIO: nenhum teste toca o data/ real do usuário.
 O fixture `isolado` monkeypatcha categorias.json, overrides.json,
 recorrentes.json E faturas.jsonl (api + categorizer) para um tmp_path que o
 pytest apaga.
-
-Rode: pytest tests/test_personalizacao.py -x
 """
 
 from __future__ import annotations
@@ -127,97 +131,96 @@ def _gravar_jsonl(path, payloads: list[dict]) -> None:
 
 
 # ---------------------------------------------------------------------------
-# 1. Normalização
+# 1. Normalização (todos os casos originais num único teste nomeado)
 # ---------------------------------------------------------------------------
 
-class TestNormalizarDescricao:
-
-    def test_normalizar_descricao(self):
-        assert normalizar_descricao("Mercado*MercadoLivre  ") == "MERCADO*MERCADOLIVRE"
-        assert normalizar_descricao("  mercado*mercadolivre") == "MERCADO*MERCADOLIVRE"
-        assert normalizar_descricao("MERCADO*MERCADOLIVRE") == "MERCADO*MERCADOLIVRE"
-
-    def test_colapsa_espacos_multiplos(self):
-        assert normalizar_descricao("MERCADO*MERCADO    LIVRE") == "MERCADO*MERCADO LIVRE"
-        assert normalizar_descricao("\tEc \n STERILAIR\t") == "EC STERILAIR"
-
-    def test_vazio(self):
-        assert normalizar_descricao("") == ""
-        assert normalizar_descricao("    ") == ""
+def test_normalizar_descricao():
+    """
+    upper + strip + colapso de espaços/tabs/newlines.
+    Cobre também overrides com ruído de caixa/espaços.
+    """
+    casos = [
+        # aplica upper + strip nas três variações da mesma descrição
+        ("Mercado*MercadoLivre  ", "MERCADO*MERCADOLIVRE"),
+        ("  mercado*mercadolivre", "MERCADO*MERCADOLIVRE"),
+        ("MERCADO*MERCADOLIVRE", "MERCADO*MERCADOLIVRE"),
+        # colapsa espaços múltiplos, tabs e newlines
+        ("MERCADO*MERCADO    LIVRE", "MERCADO*MERCADO LIVRE"),
+        ("\tEc \n STERILAIR\t", "EC STERILAIR"),
+        # vazio
+        ("", ""),
+        ("    ", ""),
+    ]
+    for entrada, esperado in casos:
+        assert normalizar_descricao(entrada) == esperado, f"falhou em {entrada!r}"
 
 
 # ---------------------------------------------------------------------------
 # 2. Seed do dicionário editável
 # ---------------------------------------------------------------------------
 
-class TestSeed:
+def test_seed_cria_e_preserva(isolado):
+    """
+    carregar_regras() cria data/categorias.json quando ausente (com o seed) e,
+    depois disso, o ARQUIVO é a fonte da verdade — nunca é sobrescrito.
+    'Outros' é fallback implícito, não uma regra.
+    """
+    path = isolado / "categorias.json"
+    assert not path.exists()
 
-    def test_seed_cria_arquivo_quando_ausente(self, isolado):
-        path = isolado / "categorias.json"
-        assert not path.exists()
+    regras = carregar_regras()
+    assert path.exists(), "seed deveria criar data/categorias.json"
+    assert regras, "seed não pode ser vazio"
+    assert json.loads(path.read_text(encoding="utf-8")) == {"regras": regras}
+    assert [r["categoria"] for r in regras] == [r["categoria"] for r in SEED_REGRAS]
+    assert all(r["categoria"] != "Outros" for r in SEED_REGRAS)
 
-        regras = carregar_regras()
+    # overrides ausentes → vazio (nenhum arquivo criado)
+    assert carregar_overrides() == {}
 
-        assert path.exists(), "seed deveria criar data/categorias.json"
-        assert regras, "seed não pode ser vazio"
-        conteudo = json.loads(path.read_text(encoding="utf-8"))
-        assert conteudo == {"regras": regras}
-        assert [r["categoria"] for r in regras] == [r["categoria"] for r in SEED_REGRAS]
-
-    def test_seed_nao_sobrescreve_arquivo_existente(self, isolado):
-        path = isolado / "categorias.json"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        custom = {"regras": [{"categoria": "So Minha", "padroes": ["XPTO"]}]}
-        path.write_text(json.dumps(custom), encoding="utf-8")
-
-        regras = carregar_regras()  # segundo carregamento lê do ARQUIVO
-
-        assert regras == custom["regras"]
-        assert regras != SEED_REGRAS
-        assert json.loads(path.read_text(encoding="utf-8")) == custom
-
-    def test_seed_sem_outros(self):
-        """'Outros' é fallback implícito, nunca uma regra do seed."""
-        assert all(r["padroes"] for r in SEED_REGRAS), "seed não deve ter regra sem padrões"
-        assert all(r["categoria"] != "Outros" for r in SEED_REGRAS)
+    # com o arquivo existente, o segundo carregamento lê do ARQUIVO
+    custom = {"regras": [{"categoria": "So Minha", "padroes": ["XPTO"]}]}
+    path.write_text(json.dumps(custom), encoding="utf-8")
+    regras = carregar_regras()
+    assert regras == custom["regras"]
+    assert regras != SEED_REGRAS
+    assert json.loads(path.read_text(encoding="utf-8")) == custom
 
 
 # ---------------------------------------------------------------------------
 # 3. Precedência: override > regras > "Outros"
 # ---------------------------------------------------------------------------
 
-class TestPrecedencia:
+@pytest.mark.parametrize("cenario", [
+    "regra_sem_override",
+    "override_vence_regra",
+])
+def test_precedencia(isolado, cenario):
+    if cenario == "regra_sem_override":
+        # Comportamento original preservado: regra casa → categoria da regra;
+        # sem regra → "Outros" (fallback implícito).
+        fatura = categorizar(_fatura(
+            ["PANIFICADORA E CO", "AMAZONMKTPLC*LHCOMPROD", "DORACIGRINGS"]))
+        assert [t.categoria for t in fatura.transacoes] == [
+            "Supermercado/Mercado", "Compras online", "Outros",
+        ]
 
-    def test_regra_sem_override(self, isolado):
-        """Comportamento anterior preservado: regra casa → categoria da regra."""
-        fatura = categorizar(_fatura(["PANIFICADORA E CO", "AMAZONMKTPLC*LHCOMPROD", "DORACIGRINGS"]))
-        cats = [t.categoria for t in fatura.transacoes]
-        assert cats == ["Supermercado/Mercado", "Compras online", "Outros"]
-
-    def test_override_vence_regra(self, isolado):
+    else:
         # A regra de seed (AMAZON → "Compras online") casa a descrição...
         fatura = categorizar(_fatura(["AMAZONMKTPLC*"]))
         assert fatura.transacoes[0].categoria == "Compras online"
 
         # ...mas o override global da MESMA descrição normalizada vence.
-        chave = normalizar_descricao("AMAZONMKTPLC*")
-        salvar_overrides({chave: "Teste"})
-
+        salvar_overrides({normalizar_descricao("AMAZONMKTPLC*"): "Teste"})
         fatura = categorizar(_fatura(["AMAZONMKTPLC*"]))
         assert fatura.transacoes[0].categoria == "Teste"
 
-    def test_override_por_descricao_normalizada(self, isolado):
-        """Override casa mesmo com ruído de caixa/espaços na descrição."""
+        # Override casa mesmo com ruído de caixa/espaços na descrição.
         salvar_overrides({normalizar_descricao("amazonmktplc*"): "Assinaturas"})
         fatura = categorizar(_fatura(["  AmazonMktplc*  "]))
         assert fatura.transacoes[0].categoria == "Assinaturas"
 
-    def test_overrides_ausente_retorna_vazio(self, isolado):
-        assert not (isolado / "overrides.json").exists()
-        assert carregar_overrides() == {}
-
-    def test_prioridade_independe_da_ordem_das_regras(self, isolado):
-        """Override vence até quando a regra que casa está em 1º lugar."""
+        # Override vence até quando a regra que casa está em 1º lugar.
         from categorizer import salvar_regras
         salvar_regras([
             {"categoria": "Primeira", "padroes": ["PANIFICADORA"]},
@@ -232,256 +235,257 @@ class TestPrecedencia:
 # 3b. Leitura: overrides aplicados num payload já serializado
 # ---------------------------------------------------------------------------
 
-class TestAplicarOverrides:
-    """aplicar_overrides(payload) — ensinamento vale na LEITURA (GET/upload)."""
+def test_aplicar_overrides(isolado):
+    """
+    aplicar_overrides(payload) — o ensinamento vale na LEITURA (GET/upload):
+    sem overrides não mexe em nada; com override, muda todas as linhas da
+    mesma chave normalizada e preserva os demais campos.
+    """
+    # --- sem overrides: mesmo objeto, nada muda -----------------------------
+    payload = _payload([_transacao("QUALQUER COISA", categoria="X")])
+    resultado = aplicar_overrides(payload)
+    assert resultado is payload            # mesmo objeto, sem cópia
+    assert payload["transacoes"][0]["categoria"] == "X"
 
-    def test_sem_overrides_retorna_o_mesmo_objeto(self, isolado):
-        payload = _payload([_transacao("QUALQUER COISA", categoria="X")])
-        resultado = aplicar_overrides(payload)
-        assert resultado is payload
-        assert payload["transacoes"][0]["categoria"] == "X"
+    # payload sem transações (ou sem a chave) passa intacto
+    assert aplicar_overrides({"banco": "x"}) == {"banco": "x"}
+    assert aplicar_overrides({"banco": "x", "transacoes": []}) == {
+        "banco": "x", "transacoes": []}
 
-    def test_aplica_em_todas_as_transacoes_da_mesma_chave(self, isolado):
-        payload = _payload([
-            _transacao("Compra a Vista NONO CAFE", categoria="Restaurante/Cafe"),
-            _transacao("  compra a vista   nono cafe ", categoria="Restaurante/Cafe"),
-            _transacao("AMAZON BR", categoria="Compras online"),
-        ])
-        salvar_overrides({normalizar_descricao("Compra a Vista NONO CAFE"): "Teste"})
+    # overrides por parâmetro: evita reler o arquivo (1x por request)
+    payload = _payload([_transacao("AMAZON BR", categoria="Compras online")])
+    aplicar_overrides(payload, {"AMAZON BR": "Teste"})
+    assert payload["transacoes"][0]["categoria"] == "Teste"
 
-        aplicar_overrides(payload)
+    # --- com override: todas as linhas da mesma chave, resto intacto --------
+    payload = _payload([
+        _transacao("Compra a Vista NONO CAFE", categoria="Restaurante/Cafe"),
+        _transacao("  compra a vista   nono cafe ", categoria="Restaurante/Cafe"),
+        _transacao("AMAZON BR", categoria="Compras online"),
+    ])
+    antes = json.loads(json.dumps(payload))
+    salvar_overrides({normalizar_descricao("Compra a Vista NONO CAFE"): "Teste"})
 
-        assert [t["categoria"] for t in payload["transacoes"]] == [
-            "Teste", "Teste", "Compras online",
-        ]
+    aplicar_overrides(payload)
 
-    def test_nao_mexe_em_outros_campos(self, isolado):
-        payload = _payload([_transacao("AMAZON BR", categoria="Compras online")])
-        antes = json.loads(json.dumps(payload))
-        salvar_overrides({normalizar_descricao("AMAZON BR"): "Teste"})
-
-        aplicar_overrides(payload)
-
-        t = payload["transacoes"][0]
-        assert t["categoria"] == "Teste"
-        for campo in ("data", "descricao", "valor", "cartao", "moeda", "parcela_atual", "parcela_total"):
-            assert t[campo] == antes["transacoes"][0][campo], campo
-        assert payload["banco"] == antes["banco"]
-
-    def test_payload_sem_transacoes(self, isolado):
-        salvar_overrides({"X": "Y"})
-        assert aplicar_overrides({"banco": "x"}) == {"banco": "x"}
-        assert aplicar_overrides({"banco": "x", "transacoes": []}) == {"banco": "x", "transacoes": []}
-
-    def test_aceita_overrides_por_parametro(self, isolado):
-        """Passar overrides evita reler o arquivo (1x por request)."""
-        payload = _payload([_transacao("AMAZON BR", categoria="Compras online")])
-        aplicar_overrides(payload, {"AMAZON BR": "Teste"})
-        assert payload["transacoes"][0]["categoria"] == "Teste"
+    assert [t["categoria"] for t in payload["transacoes"]] == [
+        "Teste", "Teste", "Compras online",
+    ]
+    t, t_antes = payload["transacoes"][0], antes["transacoes"][0]
+    for campo in ("data", "descricao", "valor", "cartao", "moeda",
+                  "parcela_atual", "parcela_total"):
+        assert t[campo] == t_antes[campo], campo
+    assert payload["banco"] == antes["banco"]
 
 
 # ---------------------------------------------------------------------------
 # 4. API — /categorias
 # ---------------------------------------------------------------------------
 
-class TestAPICategorias:
+def test_api_categorias(client, isolado):
+    """GET cria o seed; PUT válido grava; PUT inválido não grava nada."""
+    resp = client.get("/categorias")
+    assert resp.status_code == 200
+    assert resp.json()["regras"] == SEED_REGRAS
+    assert (isolado / "categorias.json").exists()
 
-    def test_get_categorias_cria_seed(self, client, isolado):
-        resp = client.get("/categorias")
-        assert resp.status_code == 200
-        regras = resp.json()["regras"]
-        assert regras == SEED_REGRAS
-        assert (isolado / "categorias.json").exists()
+    novas = [{"categoria": "Nova Cat", "padroes": ["NOVO PADRAO"]}]
+    resp = client.put("/categorias", json={"regras": novas})
+    assert resp.status_code == 200
+    assert resp.json()["regras"] == novas
+    assert client.get("/categorias").json()["regras"] == novas
+    # gravou no tmp_path (nunca no data/ real)
+    assert json.loads((isolado / "categorias.json").read_text(encoding="utf-8")) == {
+        "regras": novas}
 
-    def test_put_categorias_valido(self, client, isolado):
-        novas = [{"categoria": "Nova Cat", "padroes": ["NOVO PADRAO"]}]
-        resp = client.put("/categorias", json={"regras": novas})
-        assert resp.status_code == 200
-        assert resp.json()["regras"] == novas
-        assert client.get("/categorias").json()["regras"] == novas
-        # gravou no tmp_path (nunca no data/ real)
-        assert json.loads((isolado / "categorias.json").read_text(encoding="utf-8")) == {"regras": novas}
+    # inválido → 422, seed/anterior intacto
+    client.put("/categorias", json={"regras": [{"categoria": "X", "padroes": []}]})
+    assert json.loads((isolado / "categorias.json").read_text(encoding="utf-8")) == {
+        "regras": novas}
 
-    @pytest.mark.parametrize("body", [
-        {"regras": "nao é lista"},
-        {"regras": []},
-        {"regras": [{"categoria": "", "padroes": ["X"]}]},
-        {"regras": [{"categoria": "   ", "padroes": ["X"]}]},
-        {"regras": [{"categoria": "X", "padroes": []}]},
-        {"regras": [{"categoria": "X"}]},
-        {"regras": [{"categoria": "X", "padroes": "X"}]},
-        {"regras": [{"categoria": "X", "padroes": ["  "]}]},
-        {"regras": [{"categoria": "X", "padroes": [123]}]},
-        {"regras": ["nao é objeto"]},
-        {"nao_tem_regras": []},
-    ])
-    def test_put_categorias_invalido_422(self, client, body):
+
+def test_api_categorias_invalido_422(client, isolado):
+    """
+    Um loop por body inválido (a mensagem do assert nomeia o caso). Cada ramo
+    distinto de validação está representado; nenhum body é gravado.
+    """
+    bodies = [
+        {"regras": "nao é lista"},                                  # não é lista
+        {"regras": []},                                             # vazio
+        {"nao_tem_regras": []},                                     # chave ausente
+        {"regras": ["nao é objeto"]},                               # item não-dict
+        {"regras": [{"categoria": "", "padroes": ["X"]}]},           # categoria vazia
+        {"regras": [{"categoria": "   ", "padroes": ["X"]}]},        # categoria só espaços
+        {"regras": [{"categoria": "X", "padroes": []}]},             # padrões vazios
+        {"regras": [{"categoria": "X"}]},                            # padrões ausentes
+        {"regras": [{"categoria": "X", "padroes": "X"}]},            # padrões não-lista
+        {"regras": [{"categoria": "X", "padroes": ["  "]}]},         # padrão só espaços
+        {"regras": [{"categoria": "X", "padroes": [123]}]},          # padrão não-str
+    ]
+    for body in bodies:
         resp = client.put("/categorias", json=body)
-        assert resp.status_code == 422
+        assert resp.status_code == 422, f"body aceito indevidamente: {body}"
         assert "erro" in resp.json()
+        assert not (isolado / "categorias.json").exists(), f"gravou com: {body}"
 
-    def test_put_categorias_json_quebrado_422(self, client):
-        resp = client.put("/categorias", content="{isso nao é json", headers={"Content-Type": "application/json"})
-        assert resp.status_code == 422
-        assert "erro" in resp.json()
-
-    def test_put_categorias_invalido_nao_grava(self, client, isolado):
-        client.put("/categorias", json={"regras": [{"categoria": "X", "padroes": []}]})
-        # seed ainda intacto (ou arquivo ausente) — nada foi gravado
-        assert not (isolado / "categorias.json").exists()
+    # JSON quebrado no corpo (content= bruto, não json=)
+    resp = client.put("/categorias", content="{isso nao é json",
+                      headers={"Content-Type": "application/json"})
+    assert resp.status_code == 422
+    assert "erro" in resp.json()
 
 
 # ---------------------------------------------------------------------------
 # 5. API — /overrides
 # ---------------------------------------------------------------------------
 
-class TestAPIOverrides:
+def test_api_overrides_crud(client, isolado):
+    """
+    PUT normaliza a chave, GET lista, DELETE é case-insensitive (404 quando não
+    existe). Cada PUT é incremental — as asserções refletem o estado acumulado.
+    """
+    resp = client.put("/overrides/AmazonMktplc*LHComProd", json={"categoria": "Compras online"})
+    assert resp.status_code == 200
+    assert resp.json() == {"chave": "AMAZONMKTPLC*LHCOMPROD", "categoria": "Compras online"}
+    assert client.get("/overrides").json() == {"AMAZONMKTPLC*LHCOMPROD": "Compras online"}
+    assert json.loads((isolado / "overrides.json").read_text(encoding="utf-8")) == {
+        "AMAZONMKTPLC*LHCOMPROD": "Compras online"}
 
-    def test_put_e_get_overrides(self, client, isolado):
-        resp = client.put("/overrides/AmazonMktplc*LHComProd", json={"categoria": "Compras online"})
-        assert resp.status_code == 200
-        body = resp.json()
-        assert body["chave"] == "AMAZONMKTPLC*LHCOMPROD"
-        assert body["categoria"] == "Compras online"
+    # normaliza espaços no path
+    resp = client.put("/overrides/99FOOD%20%20*COLHERADA", json={"categoria": "Comida"})
+    assert resp.status_code == 200
+    assert resp.json()["chave"] == "99FOOD *COLHERADA"
+    assert client.get("/overrides").json() == {
+        "AMAZONMKTPLC*LHCOMPROD": "Compras online",
+        "99FOOD *COLHERADA": "Comida",
+    }
 
-        resp = client.get("/overrides")
-        assert resp.status_code == 200
-        assert resp.json() == {"AMAZONMKTPLC*LHCOMPROD": "Compras online"}
-        assert json.loads((isolado / "overrides.json").read_text(encoding="utf-8")) == {
-            "AMAZONMKTPLC*LHCOMPROD": "Compras online"
-        }
+    # DELETE é case-insensitive e devolve a chave normalizada
+    resp = client.delete("/overrides/99food%20*colherada")
+    assert resp.status_code == 200
+    assert resp.json()["chave"] == "99FOOD *COLHERADA"
+    assert client.get("/overrides").json() == {"AMAZONMKTPLC*LHCOMPROD": "Compras online"}
 
-    def test_put_override_normaliza_espacos(self, client):
-        resp = client.put("/overrides/99FOOD%20%20*COLHERADA", json={"categoria": "Comida"})
-        assert resp.status_code == 200
-        assert resp.json()["chave"] == "99FOOD *COLHERADA"
-        assert client.get("/overrides").json() == {"99FOOD *COLHERADA": "Comida"}
+    # mesmo caminho com caixa mista no PUT e minúscula no DELETE
+    assert client.put("/overrides/MERCADO*MERCADOLIVRE",
+                      json={"categoria": "Mercado"}).status_code == 200
+    assert client.get("/overrides").json()["MERCADO*MERCADOLIVRE"] == "Mercado"
+    resp = client.delete("/overrides/mercado*mercadolivre")
+    assert resp.status_code == 200
+    assert resp.json()["chave"] == "MERCADO*MERCADOLIVRE"
+    assert "MERCADO*MERCADOLIVRE" not in client.get("/overrides").json()
 
-    def test_put_override_categoria_vazia_422(self, client):
-        for body in [{"categoria": ""}, {"categoria": "   "}, {}, {"categoria": 123}, {"outro": "X"}]:
-            resp = client.put("/overrides/QUALQUER", json=body)
-            assert resp.status_code == 422, f"body aceito indevidamente: {body}"
-            assert "erro" in resp.json()
+    assert client.delete("/overrides/NAO EXISTE").status_code == 404
 
-    def test_delete_override(self, client):
-        client.put("/overrides/MERCADO*MERCADOLIVRE", json={"categoria": "Mercado"})
-        assert client.get("/overrides").json() == {"MERCADO*MERCADOLIVRE": "Mercado"}
 
-        resp = client.delete("/overrides/mercado*mercadolivre")
-        assert resp.status_code == 200
-        assert resp.json()["chave"] == "MERCADO*MERCADOLIVRE"
-        assert client.get("/overrides").json() == {}
-
-    def test_delete_override_inexistente_404(self, client):
-        resp = client.delete("/overrides/NAO EXISTE")
-        assert resp.status_code == 404
-
-    def test_get_overrides_sem_arquivo(self, client):
-        assert client.get("/overrides").json() == {}
+def test_api_overrides_invalido_422(client, isolado):
+    """Categoria vazia/ausente/tipo errado → 422 e nada é gravado."""
+    for body in [{"categoria": ""}, {"categoria": "   "}, {}, {"categoria": 123},
+                 {"outro": "X"}]:
+        resp = client.put("/overrides/QUALQUER", json=body)
+        assert resp.status_code == 422, f"body aceito indevidamente: {body}"
+        assert "erro" in resp.json()
+    # sem arquivo (GET devolve vazio) e nada gravado pelos 422
+    assert client.get("/overrides").json() == {}
+    assert not (isolado / "overrides.json").exists()
 
 
 # ---------------------------------------------------------------------------
 # 5b. API — recorrentes (flag global, ortogonal a categoria/parcela)
 # ---------------------------------------------------------------------------
 
-class TestAPIRecorrentes:
+def test_api_recorrentes_crud(client, isolado):
+    """PUT marca (chave normalizada), é idempotente, GET lista, DELETE remove."""
+    assert client.get("/recorrentes").json() == {}   # sem arquivo
 
-    def test_put_marca_e_get_lista_chave_normalizada(self, client, isolado):
-        # caixa mista + espaços extras na descrição
-        resp = client.put("/recorrentes/WellHub%20%20MarcosRicioli")
-        assert resp.status_code == 200
-        assert resp.json()["ok"] is True
-        assert resp.json()["chave"] == "WELLHUB MARCOSRICIOLI"
+    # path só com espaços normaliza para "" → 422 (e nada é gravado)
+    resp = client.put("/recorrentes/%20%20")
+    assert resp.status_code == 422
+    assert "erro" in resp.json()
+    assert not (isolado / "recorrentes.json").exists()
 
-        assert client.get("/recorrentes").json() == {"WELLHUB MARCOSRICIOLI": True}
-        assert json.loads((isolado / "recorrentes.json").read_text(encoding="utf-8")) == {
-            "WELLHUB MARCOSRICIOLI": True
-        }
+    resp = client.put("/recorrentes/WellHub%20%20MarcosRicioli")
+    assert resp.status_code == 200
+    assert resp.json() == {"ok": True, "chave": "WELLHUB MARCOSRICIOLI"}
+    assert client.get("/recorrentes").json() == {"WELLHUB MARCOSRICIOLI": True}
+    assert json.loads((isolado / "recorrentes.json").read_text(encoding="utf-8")) == {
+        "WELLHUB MARCOSRICIOLI": True}
 
-    def test_put_e_idempotente_e_nao_duplica(self, client):
-        client.put("/recorrentes/SPOTIFY")
-        client.put("/recorrentes/spotify")
-        client.put("/recorrentes/%20SPOTIFY%20")
-        assert client.get("/recorrentes").json() == {"SPOTIFY": True}
+    # idempotente: caixa/espaços diferentes não duplicam
+    client.put("/recorrentes/WELLHUB MARCOSRICIOLI".replace(" ", "%20"))
+    client.put("/recorrentes/%20wellhub%20marcosricioli%20")
+    assert client.get("/recorrentes").json() == {"WELLHUB MARCOSRICIOLI": True}
 
-    def test_get_recorrentes_sem_arquivo(self, client):
-        assert client.get("/recorrentes").json() == {}
+    resp = client.delete("/recorrentes/wellhub%20marcosricioli")
+    assert resp.status_code == 200
+    assert resp.json()["chave"] == "WELLHUB MARCOSRICIOLI"
+    assert client.get("/recorrentes").json() == {}
 
-    def test_put_recorrente_descricao_vazia_422(self, client, isolado):
-        # path só com espaços normaliza para "" → 422 (e nada é gravado)
-        resp = client.put("/recorrentes/%20%20")
-        assert resp.status_code == 422
-        assert "erro" in resp.json()
-        assert not (isolado / "recorrentes.json").exists()
+    # inexistente: 404 (inclusive na segunda vez)
+    assert client.delete("/recorrentes/NAO%20EXISTE").status_code == 404
+    client.put("/recorrentes/TWICE")
+    assert client.delete("/recorrentes/TWICE").status_code == 200
+    assert client.delete("/recorrentes/TWICE").status_code == 404
 
-    def test_delete_recorrente(self, client):
-        client.put("/recorrentes/WELLHUB MARCOSRICIOLI".replace(" ", "%20"))
-        assert client.get("/recorrentes").json() == {"WELLHUB MARCOSRICIOLI": True}
 
-        resp = client.delete("/recorrentes/wellhub%20marcosricioli")
-        assert resp.status_code == 200
-        assert resp.json()["chave"] == "WELLHUB MARCOSRICIOLI"
-        assert client.get("/recorrentes").json() == {}
+def test_recorrentes_isolados_e_payload_intacto(client, isolado):
+    """
+    A flag de recorrente é estado do usuário: independente de overrides/categorias
+    e NÃO injetada no payload servido nem no jsonl.
+    """
+    # --- independência: gravar recorrente não mexe em categorias/overrides ---
+    # (estado inicial: nenhum arquivo de sobreposição existe ainda)
+    regras_antes = client.get("/categorias").json()
+    categorias_bytes = (isolado / "categorias.json").read_bytes()
 
-    def test_delete_recorrente_inexistente_404(self, client):
-        assert client.delete("/recorrentes/NAO%20EXISTE").status_code == 404
-        # marcar e desmarcar duas vezes: a segunda é 404
-        client.put("/recorrentes/TWICE")
-        assert client.delete("/recorrentes/TWICE").status_code == 200
-        assert client.delete("/recorrentes/TWICE").status_code == 404
+    client.put("/recorrentes/APPLE%20BILL")
 
-    def test_recorrente_e_independente_de_overrides_e_categorias(self, client, isolado):
-        # estado inicial: nenhum arquivo de sobreposição existe ainda
-        regras_antes = client.get("/categorias").json()
-        categorias_bytes = (isolado / "categorias.json").read_bytes()
+    assert client.get("/recorrentes").json() == {"APPLE BILL": True}
+    assert client.get("/overrides").json() == {}
+    assert not (isolado / "overrides.json").exists()
+    assert client.get("/categorias").json() == regras_antes
+    assert (isolado / "categorias.json").read_bytes() == categorias_bytes
+    assert json.loads((isolado / "recorrentes.json").read_text(encoding="utf-8")) == {
+        "APPLE BILL": True}
 
-        client.put("/recorrentes/APPLE%20BILL")
+    # --- a flag não entra no jsonl nem no payload servido -------------------
+    _gravar_jsonl(isolado / "faturas.jsonl", [
+        _payload([_transacao("WELLHUB MARCOSRICIOLI"), _transacao("SPOTIFY")])
+    ])
+    jsonl_antes = (isolado / "faturas.jsonl").read_bytes()
 
-        # recorrente gravado, e NADA além dele
-        assert client.get("/recorrentes").json() == {"APPLE BILL": True}
-        assert client.get("/overrides").json() == {}
-        assert not (isolado / "overrides.json").exists()
-        assert client.get("/categorias").json() == regras_antes
-        assert (isolado / "categorias.json").read_bytes() == categorias_bytes
-        assert json.loads((isolado / "recorrentes.json").read_text(encoding="utf-8")) == {
-            "APPLE BILL": True
-        }
+    assert client.put("/recorrentes/WELLHUB%20MARCOSRICIOLI").status_code == 200
 
-    def test_marcar_recorrente_nao_altera_payload_da_fatura(self, client, isolado):
-        """A flag é estado do usuário: não entra no jsonl nem no payload servido."""
-        _gravar_jsonl(isolado / "faturas.jsonl", [
-            _payload([_transacao("WELLHUB MARCOSRICIOLI"), _transacao("SPOTIFY")])
-        ])
-        jsonl_antes = (isolado / "faturas.jsonl").read_bytes()
-
-        assert client.put("/recorrentes/WELLHUB%20MARCOSRICIOLI").status_code == 200
-
-        transacoes = client.get("/faturas/fat-0").json()["transacoes"]
-        assert len(transacoes) == 2
-        for t in transacoes:
-            assert "recorrente" not in t
-            assert set(t) == {"data", "descricao", "valor", "parcela_atual",
-                              "parcela_total", "moeda", "categoria", "cartao", "id"}
-        assert (isolado / "faturas.jsonl").read_bytes() == jsonl_antes
+    transacoes = client.get("/faturas/fat-0").json()["transacoes"]
+    assert len(transacoes) == 2
+    for t in transacoes:
+        assert "recorrente" not in t
+        assert set(t) == {"data", "descricao", "valor", "parcela_atual",
+                          "parcela_total", "moeda", "categoria", "cartao", "id"}
+    assert (isolado / "faturas.jsonl").read_bytes() == jsonl_antes
 
 
 # ---------------------------------------------------------------------------
 # 6. API — POST /recategorizar
 # ---------------------------------------------------------------------------
 
-class TestRecategorizar:
-
-    def test_recategorizar_sem_faturas(self, client):
+@pytest.mark.parametrize("cenario", [
+    "sem_faturas",
+    "reaplica_regras_e_grava_no_disco",
+    "respeita_override",
+    "override_vale_para_upload_futuro",
+])
+def test_recategorizar(client, isolado, cenario):
+    if cenario == "sem_faturas":
         resp = client.post("/recategorizar")
         assert resp.status_code == 200
         assert resp.json() == {"recategorizadas": 0}
 
-    def test_recategorizar_reaplica_regras(self, client, isolado):
+    elif cenario == "reaplica_regras_e_grava_no_disco":
         _gravar_jsonl(isolado / "faturas.jsonl", [_payload([
             _transacao("PANIFICADORA E CO", categoria="Lixo"),
             _transacao("DORACIGRINGS", categoria="Lixo"),
         ])])
-
         resp = client.post("/recategorizar")
         assert resp.status_code == 200
         assert resp.json() == {"recategorizadas": 1}
@@ -490,7 +494,15 @@ class TestRecategorizar:
         assert transacoes[0]["categoria"] == "Supermercado/Mercado"  # seed
         assert transacoes[1]["categoria"] == "Outros"                # fallback
 
-    def test_recategorizar_respeita_override(self, client, isolado):
+        # regravou o jsonl no disco, preservando id/criado_em e preenchendo id
+        linhas = (isolado / "faturas.jsonl").read_text(encoding="utf-8").strip().splitlines()
+        assert len(linhas) == 1
+        reg = json.loads(linhas[0])
+        assert reg["payload"]["transacoes"][0]["categoria"] == "Supermercado/Mercado"
+        assert reg["payload"]["transacoes"][0]["id"] == 0
+        assert "criado_em" in reg and reg["id"] == "fat-0"
+
+    elif cenario == "respeita_override":
         _gravar_jsonl(isolado / "faturas.jsonl", [_payload([
             _transacao("  amazonmktplc*  ", categoria="Lixo"),   # tem override
             _transacao("PANIFICADORA E CO", categoria="Lixo"),   # segue regra
@@ -498,7 +510,8 @@ class TestRecategorizar:
         ])])
 
         # override global na descrição normalizada exata
-        assert client.put("/overrides/amazonmktplc*", json={"categoria": "Assinaturas"}).status_code == 200
+        assert client.put("/overrides/amazonmktplc*",
+                          json={"categoria": "Assinaturas"}).status_code == 200
         # regra nova: casa AMAZON e PANIFICADORA com OUTRAS categorias
         resp = client.put("/categorias", json={"regras": [
             {"categoria": "Amazonia", "padroes": ["AMAZON"]},
@@ -517,39 +530,28 @@ class TestRecategorizar:
         # mesma regra vale para quem não tem override
         assert transacoes[2]["categoria"] == "Amazonia"
 
-    def test_recategorizar_regrava_jsonl_no_disco(self, client, isolado):
-        _gravar_jsonl(isolado / "faturas.jsonl", [_payload([_transacao("PANIFICADORA E CO", categoria="Lixo")])])
-        client.post("/recategorizar")
-
-        linhas = (isolado / "faturas.jsonl").read_text(encoding="utf-8").strip().splitlines()
-        assert len(linhas) == 1
-        reg = json.loads(linhas[0])
-        assert reg["payload"]["transacoes"][0]["categoria"] == "Supermercado/Mercado"
-        assert reg["payload"]["transacoes"][0]["id"] == 0
-        assert "criado_em" in reg and reg["id"] == "fat-0"
-
-    def test_recategorizar_atualiza_upload_futuro(self, client, isolado):
-        """Override gravado vale para faturas processadas depois (via categorizar)."""
+    else:
+        # override gravado vale para faturas processadas depois (via categorizar)
         client.put("/overrides/PANIFICADORA E CO", json={"categoria": "Padaria Manual"})
-        _gravar_jsonl(isolado / "faturas.jsonl", [_payload([_transacao("PANIFICADORA E CO", categoria="Lixo")])])
+        _gravar_jsonl(isolado / "faturas.jsonl", [
+            _payload([_transacao("PANIFICADORA E CO", categoria="Lixo")])])
         client.post("/recategorizar")
-        assert client.get("/faturas/fat-0").json()["transacoes"][0]["categoria"] == "Padaria Manual"
+        assert client.get("/faturas/fat-0").json()["transacoes"][0]["categoria"] == \
+            "Padaria Manual"
 
 
 # ---------------------------------------------------------------------------
 # 7. Tolerância a faturas antigas (sem id)
 # ---------------------------------------------------------------------------
 
-class TestIds:
+def test_ids_preenchidos_por_indice(client, isolado):
+    """GET preenche id por índice quando o jsonl antigo não tinha id."""
+    _gravar_jsonl(isolado / "faturas.jsonl", [_payload([
+        _transacao("A"), _transacao("B"), _transacao("C"),
+    ])])
+    transacoes = client.get("/faturas/fat-0").json()["transacoes"]
+    assert [t["id"] for t in transacoes] == [0, 1, 2]
 
-    def test_get_fatura_preenche_ids_por_indice(self, client, isolado):
-        _gravar_jsonl(isolado / "faturas.jsonl", [_payload([
-            _transacao("A"), _transacao("B"), _transacao("C"),
-        ])])
-        transacoes = client.get("/faturas/fat-0").json()["transacoes"]
-        assert [t["id"] for t in transacoes] == [0, 1, 2]
-
-    def test_fatura_para_dict_atribui_id_por_indice(self, isolado):
-        from schemas import fatura_para_dict
-        d = fatura_para_dict(_fatura(["A", "B", "C"]))
-        assert [t["id"] for t in d["transacoes"]] == [0, 1, 2]
+    from schemas import fatura_para_dict
+    d = fatura_para_dict(_fatura(["A", "B", "C"]))
+    assert [t["id"] for t in d["transacoes"]] == [0, 1, 2]

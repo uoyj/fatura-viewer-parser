@@ -45,3 +45,6 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["extractors", "parsers", "tests"]
+
+[tool.pytest.ini_options]
+markers = ["slow: testes com PDF/API"]
