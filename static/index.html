@@ -763,9 +763,10 @@ html {
         </div>
         <div style="flex: 1; min-width: 140px;">
           <select id="select-banco" class="input-select">
-            <option value="">Carregando bancos...</option>
+            <option value="" selected disabled>Selecione o banco...</option>
           </select>
         </div>
+        <div id="banco-hint" style="flex: 1 1 100%; min-width: 140px; font-size: 0.8rem; min-height: 20px;"></div>
       </div>
       <button type="submit" class="btn-enviar" id="btn-enviar">Enviar</button>
       <div id="upload-status" style="min-height: 24px;"></div>
@@ -1039,7 +1040,10 @@ async function init() {
   try {
     const parsers = await apiGET("/parsers");
     const bancoSelect = document.getElementById("select-banco");
-    bancoSelect.innerHTML = "";
+    // Regra do FRONT 3: NADA é auto-selecionado. O select nasce no placeholder
+    // (option disabled) e só ganha valor por clique do usuário ou pela
+    // inferência do /inferir-banco ao escolher o PDF.
+    bancoSelect.innerHTML = '<option value="" selected disabled>Selecione o banco...</option>';
     Object.keys(parsers).forEach(banco => {
       const opt = document.createElement("option");
       opt.value = banco;
@@ -1223,11 +1227,45 @@ document.getElementById("btn-nova-fatura").onclick = function() {
   document.getElementById("form-upload").reset();
   document.getElementById("upload-status").innerHTML = "";
   document.getElementById("erro-upload").style.display = "none";
+  // O reset volta o select ao placeholder; a hint do arquivo anterior também
+  // precisa sair, senão fica um "Banco detectado: X" órfão na tela limpa.
+  const hint = document.getElementById("banco-hint");
+  hint.textContent = "";
+  hint.style.color = "";
 };
 
-document.getElementById("input-arquivo").onchange = function(e) {
+document.getElementById("input-arquivo").onchange = async function(e) {
   const nome = e.target.files[0]?.name || "📎 Clique para selecionar PDF";
   document.getElementById("nome-arquivo").textContent = nome;
+
+  const hint = document.getElementById("banco-hint");
+  const sel = document.getElementById("select-banco");
+  sel.value = "";
+  hint.textContent = "";
+  const arquivo = e.target.files[0];
+  if (!arquivo) return;
+
+  hint.textContent = "Analisando fatura...";
+  hint.style.color = "var(--muted)";
+  const fd = new FormData();
+  fd.append("arquivo", arquivo);
+  try {
+    const resp = await fetch("/inferir-banco", { method: "POST", body: fd });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const dados = await resp.json();
+    if (dados.banco) {
+      sel.value = dados.banco;
+      const label = sel.options[sel.selectedIndex]?.textContent || dados.banco;
+      hint.textContent = `Banco detectado: ${label}. Se for outro, altere no menu.`;
+      hint.style.color = "var(--green)";
+    } else {
+      hint.textContent = "Não foi possível identificar o banco — selecione no menu.";
+      hint.style.color = "var(--yellow)";
+    }
+  } catch (err) {
+    hint.textContent = "Não foi possível identificar o banco — selecione no menu.";
+    hint.style.color = "var(--yellow)";
+  }
 };
 
 document.getElementById("form-upload").onsubmit = async function(e) {

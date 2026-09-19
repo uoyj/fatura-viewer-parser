@@ -9,6 +9,7 @@ Endpoints:
   GET    /faturas/{id}     — retorna fatura completa
   DELETE /faturas/{id}     — remove fatura + PDF
   GET    /parsers          — lista parsers registrados
+  POST   /inferir-banco    — sugere o banco pelos marcadores de texto do PDF
 
   GET    /categorias       — regras de categorização (data/categorias.json)
   PUT    /categorias       — substitui as regras (valida; 422 se inválido)
@@ -28,6 +29,7 @@ from __future__ import annotations
 
 import json
 import logging
+import tempfile
 import uuid
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
@@ -39,6 +41,7 @@ from fastapi.responses import JSONResponse
 # Importar parsers para registrar no registry
 from parsers import *  # noqa: F401, F403 — side-effect: registra parsers
 from extractors.pdf_extractor import extract_text
+from inferencia import inferir_banco
 from registry import get_parser, parsers_registrados
 from schemas import Fatura, Transacao, fatura_para_dict
 from parsers.sofisa_2026_09 import ParserError
@@ -305,6 +308,42 @@ async def delete_fatura(fatura_id: str):
 @app.get("/parsers")
 async def listar_parsers():
     return parsers_registrados()
+
+
+@app.post("/inferir-banco")
+async def inferir_banco_endpoint(arquivo: UploadFile = File(...)):
+    """
+    Recebe um PDF e infere o banco pelos marcadores de texto do header.
+
+    Só uma SUGESTÃO para o frontend: quem decide o parser continua sendo o
+    campo `banco` do POST /faturas. Mesma extração do POST /faturas
+    (`extract_text`, que recebe PATH — daí o arquivo temporário); o texto das
+    páginas é concatenado e passado à inferência.
+
+    Retorna {"banco": "sofisa"} ou {"banco": null}. 422 (padrão {"erro": ...})
+    se não for PDF ou se o PDF estiver ilegível — o frontend trata qualquer
+    não-200 como "não foi possível identificar" e não bloqueia o upload.
+    """
+    if not (arquivo.filename or "").lower().endswith(".pdf"):
+        return _erro422("Envie um PDF (.pdf)")
+
+    conteudo = await arquivo.read()
+
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+        tmp.write(conteudo)
+        tmp_path = Path(tmp.name)
+
+    try:
+        extractor_output = extract_text(tmp_path)
+    except Exception as e:
+        logger.exception("Erro extraindo PDF para inferência: %s", e)
+        return _erro422(f"PDF corrompido ou ilegível: {e}")
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+    texto = "\n".join(p.get("text") or "" for p in extractor_output.get("pages") or [])
+    bancos = sorted(parsers_registrados().keys())   # mesma fonte do GET /parsers
+    return {"banco": inferir_banco(texto, bancos)}
 
 
 # ---------------------------------------------------------------------------
