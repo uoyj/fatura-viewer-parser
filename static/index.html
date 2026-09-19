@@ -466,6 +466,24 @@ select.badge-categoria.aprendido {
   outline-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.15);
 }
+/* Editor livre da categoria (sentinela "＋ Outra categoria…"): <input> + datalist
+   na MESMA célula, com a caixa do select inline — sem componente customizado. */
+input.categoria-livre {
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  min-width: 120px;
+  max-width: 200px;
+  vertical-align: middle;
+  outline: 2px solid transparent;
+  outline-offset: 1px;
+}
+input.categoria-livre:disabled { opacity: 0.55; cursor: progress; }
 
 /* ===== GASTO RECORRENTE (flag global por descrição) ===== */
 /* Toggle na célula de Parcela: "sem parcelas, mas repete todo mês" */
@@ -797,6 +815,10 @@ html {
   </div>
 </section>
 
+<!-- Autocomplete do editor livre de categoria: UM datalist compartilhado,
+     reconstruído com categoriasConhecidas a cada abertura do editor. -->
+<datalist id="lista-categorias"></datalist>
+
 <script>
 "use strict";
 
@@ -808,6 +830,10 @@ let sortConfig = { key: "data", dir: 'asc' };
 let selectsPopulados = false;  // controle: popular selects só uma vez por fatura
 let aprendizadoFlash = null;   // { chave, expira } — destaca a célula após re-render
 let recorrentesSet = new Set(); // descrições normalizadas marcadas como recorrentes (GET /recorrentes)
+// Rótulos de categoria conhecidos — CACHE p/ autocomplete/dedup (NÃO é fonte de
+// verdade). Começa com "Outros" porque é um rótulo que o próprio app oferece no
+// select: sem ele, digitar "outros" no editor livre criaria a duplicata "outros".
+let categoriasConhecidas = new Set(["Outros"]);
 
 // ===== Utils =====
 function formatarMoeda(v) {
@@ -915,7 +941,8 @@ async function init() {
     console.error("Erro carregando parsers:", e);
   }
 
-  await carregarRecorrentes();   // flag global: precisa antes do 1º render
+  await carregarRecorrentes();            // flag global: precisa antes do 1º render
+  await carregarCategoriasConhecidas();   // rótulos (regras + overrides) p/ autocomplete
   await carregarFaturas();
 }
 
@@ -1166,6 +1193,10 @@ document.addEventListener("click", function(e) {
 function renderizarViewer() {
   if (!faturaAtual) return;
 
+  // Ponto único por onde a fatura passa a ser exibida (clique no dropdown e
+  // upload) → alimenta o cache de rótulos com as categorias desta fatura.
+  registrarCategorias((faturaAtual.transacoes || []).map(t => t.categoria));
+
   // Header cards
   const hc = document.getElementById("header-cards");
   hc.innerHTML = `
@@ -1189,7 +1220,10 @@ function renderizarViewer() {
 function popularSelects() {
   const todas = faturaAtual.transacoes;
 
-  // Categoria
+  // Categoria — FORA DE ESCOPO do autocomplete: o filtro continua com as
+  // categorias da fatura carregada (o cache global não entra aqui). Uma categoria
+  // nova só aparece no filtro depois de recarregar a fatura; o select inline das
+  // linhas, esse sim, já a mostra no próximo render (categoriasDisponiveis()).
   const cats = [...new Set(todas.map(t => t.categoria || "—"))].sort();
   const catSelEl = document.getElementById("filtro-categoria");
   catSelEl.innerHTML = '<option value="">Todas</option>' +
@@ -1228,26 +1262,87 @@ function aplicarFiltros() {
 
 const TOOLTIP_ENSINAR = "Ensinar categoria — vale para todas as faturas";
 
-// Categorias oferecidas no select inline: distintas da fatura (mesma fonte do
-// filtro) + "Outros", ordenadas.
+// ===== Cache global de rótulos (categoriasConhecidas) =====
+//
+// Só um cache para autocomplete/dedup — NÃO é fonte de verdade (a verdade segue
+// sendo data/categorias.json + os overrides). Semeado em init() com a UNIÃO de:
+// categorias das regras, categorias dos overrides e categorias das transações
+// das faturas já carregadas. Alimentado também quando uma fatura é carregada,
+// quando uma regra é salva no Dicionário e quando o editor livre cria categoria.
+
+function registrarCategorias(lista) {
+  (lista || []).forEach(c => {
+    const rotulo = String(c === null || c === undefined ? "" : c).trim();
+    if (rotulo && rotulo !== "—") categoriasConhecidas.add(rotulo);
+  });
+}
+
+// Rótulo CADASTRADO que casa com o texto digitado (comparação normalizada) —
+// preserva a grafia existente: "alimentacao" -> "Alimentação".
+function categoriaConhecidaPor(texto) {
+  const alvo = normalizarDescricao(texto);
+  if (!alvo) return null;
+  for (const c of categoriasConhecidas) {
+    if (normalizarDescricao(c) === alvo) return c;
+  }
+  return null;
+}
+
+// Semeia o cache com regras + overrides. Falha não derruba o app: o Set também é
+// alimentado pelas faturas carregadas e pelo Dicionário.
+async function carregarCategoriasConhecidas() {
+  try {
+    const dados = await apiGET("/categorias");
+    registrarCategorias((dados.regras || []).map(r => r.categoria));
+  } catch (e) {
+    console.warn("Não foi possível carregar /categorias (rótulos):", e.message);
+  }
+  try {
+    const overrides = await apiGET("/overrides");
+    registrarCategorias(Object.values(overrides || {}));
+  } catch (e) {
+    console.warn("Não foi possível carregar /overrides (rótulos):", e.message);
+  }
+}
+
+// datalist COMPARTILHADO (um só no body): options = categoriasConhecidas ordenadas
+function garantirDatalistCategorias() {
+  const dl = document.getElementById("lista-categorias");
+  if (!dl) return;
+  dl.innerHTML = [...categoriasConhecidas]
+    .sort((a, b) => a.localeCompare(b, "pt-BR"))
+    .map(c => `<option value="${escHtml(c)}"></option>`)
+    .join("");
+}
+
+// Categorias oferecidas no select inline: as da fatura carregada + os rótulos
+// CONHECIDOS (outras faturas, regras, overrides) + "Outros", ordenadas.
+// Lê o cache a cada render: categoria criada agora já entra no select das demais
+// linhas no próximo render.
 function categoriasDisponiveis() {
   const cats = new Set(
     (faturaAtual?.transacoes || [])
       .map(t => t.categoria)
       .filter(c => c && c !== "—")
   );
+  categoriasConhecidas.forEach(c => { if (c && c !== "—") cats.add(c); });
   cats.add("Outros");
   return [...cats].sort((a, b) => a.localeCompare(b, "pt-BR"));
 }
 
+// Sentinela do select inline: abre o editor livre e NUNCA vai ao backend.
+const SENTINELA_OUTRA = "__OUTRA__";
+
 // Options do select de uma transação, com a categoria atual selecionada.
 // Sem categoria (null) → placeholder "—" desabilitado (não há como voltar a null).
+// A última option é sempre a sentinela "＋ Outra categoria…".
 function opcoesCategoriaSelect(cats, atual) {
   let html = "";
   if (!atual) html += '<option value="" selected disabled>—</option>';
   html += cats.map(c =>
     `<option value="${escHtml(c)}"${c === atual ? " selected" : ""}>${escHtml(c)}</option>`
   ).join("");
+  html += `<option value="${SENTINELA_OUTRA}">＋ Outra categoria…</option>`;
   return html;
 }
 
@@ -1263,22 +1358,41 @@ function marcarAprendizado(chave) {
   }, 850);
 }
 
+// Núcleo COMPARTILHADO do ensino (select inline e editor livre): PUT do override
+// com a descrição CRUA da transação (o backend normaliza) e aplicação da
+// categoria em TODAS as transações da fatura com a mesma chave normalizada —
+// o override é global por descrição. Lança em falha; quem chama faz o revert.
+async function ensinarCategoriaGlobal(descricaoCrua, rotulo) {
+  let chave = normalizarDescricao(descricaoCrua);
+  const resp = await apiPUT(`/overrides/${encodeURIComponent(descricaoCrua)}`, { categoria: rotulo });
+  if (resp && resp.chave) chave = resp.chave;   // backend é a fonte da verdade
+
+  let afetadas = 0;
+  faturaAtual.transacoes.forEach(x => {
+    if (normalizarDescricao(x.descricao) === chave) {
+      x.categoria = rotulo;
+      afetadas++;
+    }
+  });
+  return { chave, afetadas };
+}
+
 async function aprenderCategoria(sel) {
   const anterior = sel.dataset.anterior || "";
   const nova = sel.value;
   if (!nova || nova === anterior) return;
 
+  // Sentinela "＋ Outra categoria…": NÃO envia nada — troca a célula por um input
+  // livre. O valor __OUTRA__ jamais chega ao backend.
+  if (nova === SENTINELA_OUTRA) { abrirEdicaoCategoriaLivre(sel); return; }
+
   const t = (faturaAtual?.transacoes || []).find(x => String(x.id) === String(sel.dataset.id));
   if (!t) { sel.value = anterior; return; }
 
-  const chaveLocal = normalizarDescricao(t.descricao);
-
   sel.disabled = true;
-  let chave = chaveLocal;
+  let res;
   try {
-    // t.descricao CRUA — o backend normaliza (chave = descricao normalizada)
-    const resp = await apiPUT(`/overrides/${encodeURIComponent(t.descricao)}`, { categoria: nova });
-    if (resp && resp.chave) chave = resp.chave;   // backend é a fonte da verdade
+    res = await ensinarCategoriaGlobal(t.descricao, nova);
   } catch (e) {
     sel.value = anterior;
     sel.disabled = false;
@@ -1286,19 +1400,109 @@ async function aprenderCategoria(sel) {
     return;
   }
 
-  // Override é GLOBAL por descrição normalizada: aplica em TODAS as transações
-  // da fatura com a mesma chave (não só na linha clicada).
-  let afetadas = 0;
-  faturaAtual.transacoes.forEach(x => {
-    if (normalizarDescricao(x.descricao) === chave) {
-      x.categoria = nova;
-      afetadas++;
-    }
-  });
-
-  marcarAprendizado(chave);
+  registrarCategorias([nova]);
+  marcarAprendizado(res.chave);
   aplicarFiltros();   // re-render: tabela + totais por categoria na hora
-  console.log(`[categoria] "${nova}" ensinada para ${afetadas} transação(ões) — chave "${chave}"`);
+  console.log(`[categoria] "${nova}" ensinada para ${res.afetadas} transação(ões) — chave "${res.chave}"`);
+}
+
+// ===== Editor livre de categoria (sentinela "＋ Outra categoria…") =====
+//
+// Substitui o <select> NA MESMA CÉLULA por <input list="lista-categorias"> +
+// datalist compartilhado. O input aceita QUALQUER texto (o datalist é só
+// autocomplete, nunca restrição). No máximo UM editor aberto por vez.
+
+let editorCategoriaAtivo = null;   // { td, input, ctx, onKey, fora }
+
+// Select reconstruído com a categoria ANTERIOR (data-anterior): usado ao fechar o
+// editor SEM PUT (Esc / clique fora / abertura de outro editor) — nenhum request.
+function htmlSelectCategoriaRestaurado(ctx) {
+  return `<select class="badge badge-categoria"
+      data-id="${escHtml(ctx.id)}"
+      data-anterior="${escHtml(ctx.anterior)}"
+      title="${TOOLTIP_ENSINAR}"
+      aria-label="${TOOLTIP_ENSINAR}"
+      style="${ctx.style}"
+      onchange="aprenderCategoria(this)">${opcoesCategoriaSelect(categoriasDisponiveis(), ctx.anterior)}</select>`;
+}
+
+function fecharEditorCategoria() {
+  if (!editorCategoriaAtivo) return;
+  const ed = editorCategoriaAtivo;
+  editorCategoriaAtivo = null;                      // limpa antes (evita reentrada)
+  ed.input.removeEventListener("keydown", ed.onKey);
+  document.removeEventListener("mousedown", ed.fora, true);
+  if (ed.td.isConnected) ed.td.innerHTML = htmlSelectCategoriaRestaurado(ed.ctx);
+}
+
+function abrirEdicaoCategoriaLivre(sel) {
+  fecharEditorCategoria();   // só um editor por vez (restaura o anterior)
+
+  const td = sel.parentElement;
+  const ctx = {
+    id: sel.dataset.id,
+    anterior: sel.dataset.anterior || "",
+    style: sel.getAttribute("style") || "",
+  };
+
+  garantirDatalistCategorias();   // options = categoriasConhecidas ordenadas
+
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "categoria-livre";
+  input.setAttribute("list", "lista-categorias");   // autocomplete (nunca restrição)
+  input.setAttribute("placeholder", "Categoria…");
+  input.setAttribute("aria-label", "Categoria (texto livre — Enter confirma, Esc cancela)");
+
+  td.innerHTML = "";          // o select sai de cena; o input entra no mesmo lugar
+  td.appendChild(input);
+
+  const onKey = (e) => {
+    if (e.key === "Enter") { e.preventDefault(); confirmarEdicaoCategoriaLivre(input, ctx, td); }
+    else if (e.key === "Escape") { e.preventDefault(); fecharEditorCategoria(); }
+  };
+  // "Clique fora" ESCOPADO ao container do editor (o handler global que fecha o
+  // dropdown de faturas é de `click` e continua intocado).
+  const fora = (e) => { if (!td.contains(e.target)) fecharEditorCategoria(); };
+
+  input.addEventListener("keydown", onKey);
+  document.addEventListener("mousedown", fora, true);
+
+  editorCategoriaAtivo = { td, input, ctx, onKey, fora };
+  input.focus();   // começa vazio e com foco (o texto anterior não é pré-preenchido)
+}
+
+async function confirmarEdicaoCategoriaLivre(input, ctx, td) {
+  const texto = (input.value || "").trim();
+  if (!texto) return;   // Enter vazio: sem efeito
+
+  const t = (faturaAtual?.transacoes || []).find(x => String(x.id) === String(ctx.id));
+  if (!t) { fecharEditorCategoria(); return; }
+
+  // Casa com rótulo já conhecido? Usa a GRAFIA CADASTRADA ("alimentacao" ->
+  // "Alimentação"). Senão, o texto digitado é a categoria nova.
+  const rotulo = categoriaConhecidaPor(texto) || texto;
+
+  input.disabled = true;
+  let res;
+  try {
+    res = await ensinarCategoriaGlobal(t.descricao, rotulo);   // MESMO caminho do ensino normal
+  } catch (e) {
+    // Falha no PUT: mantém o input ABERTO com o texto digitado (mesmo alert do
+    // fluxo do select). Nunca traceback ao usuário.
+    input.disabled = false;
+    input.focus();
+    alert(`Não foi possível ensinar a categoria: ${e.message}`);
+    return;
+  }
+
+  // Categoria nova entra no cache: categoriasDisponiveis() já a inclui no próximo
+  // render (senão o select voltaria sem ela) e o datalist a mostra ao reabrir.
+  registrarCategorias([rotulo]);
+  marcarAprendizado(res.chave);
+  fecharEditorCategoria();
+  aplicarFiltros();   // re-render: todas as linhas com a descrição recebem o rótulo
+  console.log(`[categoria] "${rotulo}" ensinada para ${res.afetadas} transação(ões) — chave "${res.chave}"`);
 }
 
 // ===== Gasto recorrente (flag global por descrição normalizada) =====
@@ -1713,6 +1917,7 @@ async function salvarRegrasDic() {
     const resp = await apiPUT("/categorias", { regras });
     const salvas = resp && resp.regras ? resp.regras : regras;
     regrasTela = salvas.map(r => ({ categoria: r.categoria, padroes: [...r.padroes] }));
+    registrarCategorias(regrasTela.map(r => r.categoria));   // regras salvas viram rótulos conhecidos
     renderizarRegras();
     mostrarMsgDic("msg-regras", `Regras salvas (${regrasTela.length}).`, "ok");
   } catch (e) {
