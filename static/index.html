@@ -45,6 +45,16 @@ header h1 {
   font-weight: 700;
   color: var(--accent);
 }
+.dropdown-mes-header { font-size:.75rem; font-weight:600; opacity:.6; padding:6px 10px 2px; position:sticky; top:0; background:inherit; }
+.comp-num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.comp-anomalia { background: rgba(248, 113, 111, 0.15); }
+.comp-anomalia::after { content: " ▲"; color: var(--red); font-size: 0.7rem; }
+.comp-razao { color: var(--red); font-weight: 700; }
+.comp-anom-card {
+  background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+  padding: 10px 12px; margin-bottom: 8px; font-size: 0.85rem;
+  display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+}
 .dropdown-container {
   position: relative;
   flex: 1;
@@ -716,6 +726,7 @@ html {
   </div>
   <button class="btn-nova" id="btn-nova-fatura">Nova fatura</button>
   <button class="btn-outline" id="btn-dicionario">Dicionário</button>
+  <button class="btn-outline" id="btn-comparativo">Comparativo</button>
 </header>
 
 <!-- ===== TELA DE UPLOAD ===== -->
@@ -834,6 +845,36 @@ html {
     <button class="btn-excluir" id="btn-recategorizar">Aplicar em todas as faturas</button>
     <div class="dic-msg" id="msg-recategorizar"></div>
   </div>
+</section>
+
+<!-- ===== TELA COMPARATIVO ===== -->
+<section id="tela-comparativo" class="tela">
+  <div class="dic-header">
+    <h2>Comparativo mês a mês</h2>
+    <button class="btn-outline" id="btn-voltar-comparativo">Voltar</button>
+  </div>
+  <div id="comp-erro" class="erro-box" style="display:none;"></div>
+  <div id="comp-vazio" class="categoria-section" style="display:none;">
+    <span style="color:var(--muted);font-size:0.85rem;">É preciso ter faturas de pelo menos 2 meses fechados para comparar.</span>
+  </div>
+  <section id="sec-comp-matriz" style="display:none;">
+    <div class="categoria-section">
+      <h3>Gastos por categoria</h3>
+      <div class="table-wrapper">
+        <table>
+          <thead id="comp-thead"></thead>
+          <tbody id="comp-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+  <section id="sec-comp-anomalias" style="display:none;">
+    <div class="categoria-section">
+      <h3>Anomalias <small style="color:var(--muted);font-weight:400">(mês &gt; 1,5× a mediana anterior · transação &gt; 2,5× a mediana da descrição)</small></h3>
+      <div id="comp-anom-cat"></div>
+      <div id="comp-anom-tx" style="margin-top:12px;"></div>
+    </div>
+  </section>
 </section>
 
 <!-- Autocomplete do editor livre de categoria: UM datalist compartilhado,
@@ -999,7 +1040,6 @@ function popularDropdownFaturas() {
   }
 
   container.removeAttribute("aria-disabled");
-  // Só mostra resumo de fatura REALMENTE carregada (clique/upload); senão placeholder.
   if (faturaAtual) {
     container.className = "dropdown-selected";
     container.removeAttribute("title");
@@ -1009,17 +1049,38 @@ function popularDropdownFaturas() {
     container.removeAttribute("title");
     container.innerHTML = `<span>${PLACEHOLDER_FATURA}</span><span>▼</span>`;
   }
+
   options.innerHTML = "";
+
+  // Agrupa por mês de fechamento (YYYY-MM)
+  const porMes = {};
   faturasCache.forEach(f => {
-    const opt = document.createElement("div");
-    opt.className = "dropdown-option";
-    opt.innerHTML = `<span>${formatoResumoFatura(f)}</span><span class="delete-x" onclick="deletarFaturaDropdown(event, '${f.id}')">×</span>`;
-    opt.onclick = (e) => {
-      // Evita disparar o onclick do pai quando clicar no x
-      if (e.target.classList.contains("delete-x")) return;
-      carregarFatura(f.id);
-    };
-    options.appendChild(opt);
+    const mes = (f.fechamento || "").slice(0, 7) || "????-??";
+    (porMes[mes] = porMes[mes] || []).push(f);
+  });
+
+  // Meses conhecidos primeiro (mais recente → mais antigo), "????-??" por último
+  const meses = Object.keys(porMes).filter(m => m !== "????-??").sort().reverse();
+  if (porMes["????-??"]) meses.push("????-??");
+
+  meses.forEach(mes => {
+    // Cabeçalho do grupo
+    const h = document.createElement("div");
+    h.className = "dropdown-mes-header";
+    h.textContent = mes === "????-??" ? "Sem data" : mes.split("-").reverse().join("/");
+    options.appendChild(h);
+
+    // Opções do grupo (aqui estava o comentário sem código — é este bloco)
+    porMes[mes].forEach(f => {
+      const opt = document.createElement("div");
+      opt.className = "dropdown-option";
+      opt.innerHTML = `<span>${formatoResumoFatura(f)}</span><span class="delete-x" onclick="deletarFaturaDropdown(event, '${f.id}')">×</span>`;
+      opt.onclick = (e) => {
+        if (e.target.classList.contains("delete-x")) return;
+        carregarFatura(f.id);
+      };
+      options.appendChild(opt);
+    });
   });
 }
 
@@ -2052,6 +2113,107 @@ function abrirDicionario() {
 // --- Bindings da tela ---
 document.getElementById("btn-dicionario").onclick = abrirDicionario;
 document.getElementById("btn-voltar-dicionario").onclick = () => mostrarTelas(faturaAtual ? "viewer" : "upload");
+
+// ===== Comparativo mês a mês =====
+async function abrirComparativo() {
+  mostrarTelas("comparativo");
+  await carregarComparativo();
+}
+
+async function carregarComparativo() {
+  const erroEl = document.getElementById("comp-erro");
+  const vazioEl = document.getElementById("comp-vazio");
+  erroEl.style.display = "none";
+  vazioEl.style.display = "none";
+  document.getElementById("sec-comp-matriz").style.display = "none";
+  document.getElementById("sec-comp-anomalias").style.display = "none";
+
+  let c;
+  try {
+    c = await apiGET("/comparativo");
+  } catch (e) {
+    erroEl.textContent = `Não foi possível carregar o comparativo: ${e.message}`;
+    erroEl.style.display = "block";
+    return;
+  }
+
+  if (!c.meses || c.meses.length < 2) {
+    vazioEl.style.display = "block";
+    return;
+  }
+
+  renderizarMatrizComparativo(c);
+  renderizarAnomaliasComparativo(c);
+  document.getElementById("sec-comp-matriz").style.display = "block";
+  document.getElementById("sec-comp-anomalias").style.display = "block";
+}
+
+function renderizarMatrizComparativo(c) {
+  const thead = document.getElementById("comp-thead");
+  const tbody = document.getElementById("comp-tbody");
+
+  // Linha de totais do mês
+  const totaisRow = `<tr><td style="font-weight:700;">Total do mês</td>` +
+    c.meses.map(m => `<td class="comp-num" style="font-weight:700;">${formatarMoeda(c.totais_mes[m])}</td>`).join("") +
+    `</tr>`;
+
+  // Linha de mês anterior (base 100%): variação do total
+  const mesBase = c.totais_mes[c.meses[0]];
+  const varRow = `<tr><td style="color:var(--muted);">Variação vs 1º mês</td>` +
+    c.meses.map(m => {
+      const base = parseFloat(mesBase);
+      const v = parseFloat(c.totais_mes[m]);
+      if (!base) return `<td class="comp-num">—</td>`;
+      const pct = ((v - base) / base) * 100;
+      const cor = pct > 1 ? "var(--red)" : pct < -1 ? "var(--green)" : "var(--muted)";
+      return `<td class="comp-num" style="color:${cor};">${pct > 0 ? "+" : ""}${pct.toFixed(0)}%</td>`;
+    }).join("") + `</tr>`;
+
+  thead.innerHTML = `<tr><th>Categoria</th>` +
+    c.meses.map(m => `<th>${m.split("-").reverse().join("/")}</th>`).join("") + `</tr>`;
+
+  // Linha total primeiro, depois categorias ordenadas pelo maior gasto agregado
+  const anomalias = new Set((c.anomalias_categoria || []).map(a => `${a.categoria}|${a.mes}`));
+  const cats = Object.entries(c.por_categoria)
+    .map(([cat, porMes]) => [cat, c.meses.reduce((acc, m) => acc + (parseFloat(porMes[m]) || 0), 0)])
+    .sort((a, b) => b[1] - a[1]);
+
+  tbody.innerHTML = totaisRow + varRow + cats.map(([cat, total]) =>
+    `<tr><td>${escHtml(cat)}</td>` +
+    c.meses.map(m => {
+      const v = c.por_categoria[cat][m];
+      const cls = anomalias.has(`${cat}|${m}`) ? "comp-num comp-anomalia" : "comp-num";
+      return `<td class="${cls}">${v !== undefined ? formatarMoeda(v) : "—"}</td>`;
+    }).join("") + `</tr>`
+  ).join("");
+}
+
+function renderizarAnomaliasComparativo(c) {
+  const elCat = document.getElementById("comp-anom-cat");
+  const elTx = document.getElementById("comp-anom-tx");
+
+  const ac = c.anomalias_categoria || [];
+  const at = c.anomalias_transacao || [];
+
+  elCat.innerHTML = ac.length
+    ? ac.map(a => `<div class="comp-anom-card">
+        <span><strong>${escHtml(a.categoria)}</strong> · ${a.mes.split("-").reverse().join("/")}</span>
+        <span>${formatarMoeda(a.valor)} <span class="comp-razao">${a.razao}×</span> <small style="color:var(--muted)">(mediana ${formatarMoeda(a.mediana_anterior)})</small></span>
+      </div>`).join("")
+    : `<div class="overrides-vazio">Nenhuma categoria fora do padrão.</div>`;
+
+  elTx.innerHTML = at.length
+    ? at.map(a => `<div class="comp-anom-card">
+        <span>${escHtml(a.descricao)} <small style="color:var(--muted)">· ${formatarData(a.data)} · ${escHtml(a.categoria || "")}</small></span>
+        <span>${formatarMoeda(a.valor)} <span class="comp-razao">${a.razao}×</span> <small style="color:var(--muted)">(mediana ${formatarMoeda(a.mediana_descricao)})</small></span>
+      </div>`).join("")
+    : `<div class="overrides-vazio">Nenhuma transação atípica.</div>`;
+}
+
+// Bindings (perto dos bindings de btn-dicionario):
+document.getElementById("btn-comparativo").onclick = abrirComparativo;
+document.getElementById("btn-voltar-comparativo").onclick = () =>
+  mostrarTelas(faturaAtual ? "viewer" : "upload");
 document.getElementById("btn-salvar-regras").onclick = salvarRegrasDic;
 document.getElementById("btn-recategorizar").onclick = aplicarEmTodasFaturas;
 

@@ -56,6 +56,8 @@ from categorizer import (
     validar_regras,
 )
 
+from comparativo import calcular_comparativo
+
 logger = logging.getLogger("api")
 
 app = FastAPI(title="fatura-viewer")
@@ -163,6 +165,11 @@ def _dict_para_fatura(payload: dict) -> Fatura | None:
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
+
+@app.get("/comparativo")
+async def comparativo():
+    """Comparação mês a mês + anomalias sobre todas as faturas salvas."""
+    return calcular_comparativo(_carregar_registros())
 
 @app.post("/faturas")
 async def upload_fatura(arquivo: UploadFile = File(...), banco: str = Form(...), versao: str = "latest"):
