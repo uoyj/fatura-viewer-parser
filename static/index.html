@@ -411,9 +411,9 @@ td {
 tr:hover td { background: #0f172a; }
 
 /* ===== BADGES ===== */
-/* Caixa canônica das pílulas da célula Parcela (badge-parcela + toggle 🔁):
+/* Caixa canônica das pílulas da célula Parcela (badge-parcela + toggle recorrente):
    mesma fonte, padding, raio e line-height — sem isso as duas pílulas ficavam
-   com alturas diferentes e o 🔁 dançava de linha para linha. */
+   com alturas diferentes e o ícone dançava de linha para linha. */
 .badge {
   display: inline-block;
   padding: 2px 8px;
@@ -516,7 +516,7 @@ input.categoria-livre:disabled { opacity: 0.55; cursor: progress; }
   outline-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.15);
 }
-/* 🔁 discreto ao lado da descrição: lembrete de que o item é projetado indefinidamente */
+/* Ícone de recorrência: recordação discreto ao lado da descrição de que o item é projetado indefinidamente */
 .marca-recorrente { color: var(--accent); font-size: 0.8rem; margin-left: 4px; cursor: help; }
 /* Badge "recorrente" nos blocos da projeção — distinto do badge de parcela N/M */
 .badge-proj-recorrente {
@@ -525,6 +525,27 @@ input.categoria-livre:disabled { opacity: 0.55; cursor: progress; }
   color: var(--accent);
   font-size: 0.7rem;
   padding: 0 4px;
+  display: inline-flex;
+  align-items: center;
+}
+/* Ícone de recorrência: SVG inline compartilhado por .badge-recorrente, .marca-recorrente e .badge-proj-recorrente */
+.badge-recorrente svg.icon-recorrente,
+.marca-recorrente svg.icon-recorrente,
+.badge-proj-recorrente svg.icon-recorrente {
+  width: 0.95em;
+  height: 0.95em;
+  /* Lucide é ícone de TRAÇO: fill none + stroke currentColor (CSS vence o
+     presentation attribute, então o fill antigo tinha de sair daqui). */
+  fill: none;
+  stroke: currentColor;
+  flex-shrink: 0;
+}
+.badge-recorrente svg.icon-recorrente,
+.marca-recorrente svg.icon-recorrente {
+  vertical-align: -0.125em;
+}
+.badge-proj-recorrente svg.icon-recorrente {
+  margin-right: 2px;
 }
 .valor-positivo { color: var(--text); font-weight: 500; }
 .valor-negativo { color: var(--green); font-weight: 600; }
@@ -1516,6 +1537,16 @@ async function confirmarEdicaoCategoriaLivre(input, ctx, td) {
 const TOOLTIP_RECORRENTE = "Marcar como gasto recorrente — projeta este valor nos próximos 12 meses (vale para todas as faturas)";
 const TOOLTIP_RECORRENTE_ATIVO = "Gasto recorrente — projetado indefinidamente. Clique para desmarcar.";
 
+// Ícone SVG inline do badge recorrente (substitui o emoji 🔁 para consistência
+// visual entre a pílula do toggle e o badge da projeção — tupla de geometria
+// (.badge/.marca-recorrente) preservada via CSS abaixo).
+// Padrão: Lucide "repeat" (lucide-static v1.47.0, licença ISC), copiado do pacote
+// oficial — é SVG de TRAÇO (fill=none + stroke=currentColor), por isso o CSS de
+// .icon-recorrente precisa zerar o fill herdado da regra antiga.
+// Alternativas oficiais do mesmo pacote, se preferir trocar em uma linha:
+// "rotate-cw", "refresh-cw", "refresh-ccw", "calendar-sync", "recycle", "infinity".
+const ICONE_RECORRENTE = '<svg class="icon-recorrente" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>';
+
 function ehRecorrente(t) {
   return recorrentesSet.has(normalizarDescricao(t.descricao || ""));
 }
@@ -1622,16 +1653,17 @@ function renderizarTabela() {
 
     // Toggle de gasto recorrente: vive na célula de Parcela ("sem parcelas,
     // mas repete") e usa a MESMA UX do ensino de categoria (clique → PUT/DELETE
-    // + flash). O 🔁 na descrição é o lembrete de que o item é projetado sempre.
+    // + flash). O ícone na descrição é o lembrete de que o item é projetado sempre.
     const rec = ehRecorrente(t);
+    const recIcon = ICONE_RECORRENTE;
     const recBtn = `<button class="badge-recorrente${rec ? " ativo" : ""}"
         data-id="${escHtml(t.id)}"
         title="${rec ? TOOLTIP_RECORRENTE_ATIVO : TOOLTIP_RECORRENTE}"
         aria-label="${TOOLTIP_RECORRENTE}"
         aria-pressed="${rec}"
-        onclick="alternarRecorrente(this)">🔁</button>`;
+        onclick="alternarRecorrente(this)">${recIcon}</button>`;
     const marcaRec = rec
-      ? ` <span class="marca-recorrente" title="${TOOLTIP_RECORRENTE_ATIVO}">🔁</span>`
+      ? ` <span class="marca-recorrente" title="${TOOLTIP_RECORRENTE_ATIVO}">${recIcon}</span>`
       : "";
 
     return `<tr>
@@ -1772,8 +1804,8 @@ function projetarParcelas() {
         <div class="projecao-linha" style="display:none;font-size:0.8rem;color:var(--muted);padding-left:16px;border-bottom:1px solid var(--border);">
           <span>${l.descricao}</span>
           <span style="float:right">${l.cartao} · ${l.recorrente
-            ? '<span class="badge-proj-recorrente">🔁 recorrente</span>'
-            : `parcela ${l.parcela}`} · ${formatarMoeda(l.valor)}</span>
+            ? '<span class="badge-proj-recorrente">' + ICONE_RECORRENTE + 'Recorrente</span>'
+            : 'parcela ' + l.parcela + ' · ' + formatarMoeda(l.valor)}</span>
         </div>`).join("");
 
     const expanded = idx === 0 ? 'block' : 'none';
