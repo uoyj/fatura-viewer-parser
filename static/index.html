@@ -989,14 +989,51 @@ function formatarParcela(parcela_atual, parcela_total) {
   return `${parcela_atual}/${parcela_total}`;
 }
 
+// ===== Cores de categoria: paleta qualitativa + atribuição greedy persistente =====
+// Hash puro colidia (hsl(hash%360, ...)): cores repetidas com ~15 categorias.
+// Aqui cada categoria NOVA pega a próxima cor LIVRE da paleta curada — duas
+// categorias nunca dividem cor até a paleta esgotar (aí recicla com outra
+// luminância). Persistido em localStorage: estável entre telas e sessões.
+const PALETA_CATEGORIAS = [
+  "hsl(210, 75%, 55%)",   // azul
+  "hsl(25, 85%, 55%)",    // laranja
+  "hsl(150, 60%, 45%)",   // verde
+  "hsl(330, 70%, 58%)",   // rosa
+  "hsl(270, 65%, 62%)",   // roxo
+  "hsl(45, 90%, 50%)",    // amarelo
+  "hsl(180, 70%, 40%)",   // teal
+  "hsl(0, 75%, 58%)",     // vermelho
+  "hsl(95, 55%, 45%)",    // verde-limão
+  "hsl(305, 60%, 58%)",   // magenta
+  "hsl(160, 45%, 62%)",   // menta claro
+  "hsl(230, 45%, 65%)",   // azul-acinzentado
+];
+const CORES_CATEGORIA = new Map(
+  JSON.parse(localStorage.getItem("coresCategorias") || "[]"));
+
+function _salvarCoresCategoria() {
+  try {
+    localStorage.setItem("coresCategorias", JSON.stringify([...CORES_CATEGORIA]));
+  } catch (_) { /* armazenamento indisponível: cores apenas na sessão */ }
+}
+
 function corCategoria(nome) {
-  if (!nome) return 'rgba(148,163,184,0.3)';
-  let hash = 0;
-  for (let i = 0; i < nome.length; i++) {
-    hash = nome.charCodeAt(i) + ((hash << 5) - hash);
+  if (!nome) return "rgba(148,163,184,0.3)";
+  if (!CORES_CATEGORIA.has(nome)) {
+    const usadas = new Set(CORES_CATEGORIA.values());
+    let cor = PALETA_CATEGORIAS.find(c => !usadas.has(c));
+    if (!cor) {
+      // Paleta esgotada: recicla variando a luminância a cada volta
+      const i = CORES_CATEGORIA.size % PALETA_CATEGORIAS.length;
+      const m = PALETA_CATEGORIAS[i].match(/^hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)$/);
+      const voltas = Math.floor(CORES_CATEGORIA.size / PALETA_CATEGORIAS.length);
+      const lum = Math.min(35 + voltas * 15, 70);
+      cor = `hsl(${m[1]}, ${m[2]}%, ${lum}%)`;
+    }
+    CORES_CATEGORIA.set(nome, cor);
+    _salvarCoresCategoria();
   }
-  const h = Math.abs(hash) % 360;
-  return `hsl(${h}, 70%, 45%)`;
+  return CORES_CATEGORIA.get(nome);
 }
 
 function escHtml(s) {
@@ -1990,18 +2027,13 @@ function projetarParcelas() {
 
   const chaves = Object.keys(porMes).sort();
 
-  if (chaves.length === 0) {
+  if (!chaves.length) {
     lista.innerHTML = '<span style="color:var(--muted);font-size:0.85rem;">Sem parcelas nem gastos recorrentes pendentes para próximas faturas.</span>';
     return;
   }
 
-  // Max total para barra proporcional
-  let maxTotal = 0;
-  chaves.forEach(k => { if (porMes[k].total > maxTotal) maxTotal = porMes[k].total; });
-
-  lista.innerHTML = chaves.map((k, idx) => {
+  const blocos = chaves.map(k => {
     const bloco = porMes[k];
-    const pct = maxTotal > 0 ? Math.round((bloco.total / maxTotal) * 100) : 0;
     const detalhesHtml = bloco.linhas
       .sort((a, b) => b.valor - a.valor)
       .map(l => `
@@ -2011,19 +2043,9 @@ function projetarParcelas() {
             ? '<span class="badge-proj-recorrente">' + ICONE_RECORRENTE + 'Recorrente</span>'
             : 'parcela ' + l.parcela + ' · ' + formatarMoeda(l.valor)}</span>
         </div>`).join("");
-
-    const expanded = idx === 0 ? 'block' : 'none';
-
-    return `
-      <div class="categoria-item" style="cursor:pointer" onclick="toggleProjecao(this)">
-        <span class="cat-name">${bloco.mesLabel}</span>
-        <div class="cat-bar-container" style="flex:1"><div class="cat-bar" style="width:${pct}%;background:${corCategoria(bloco.mesLabel)};"></div></div>
-        <span class="cat-valor">${formatarMoeda(bloco.total)}</span>
-      </div>
-      <div class="projecao-detalhes" style="display:${expanded}">
-        ${detalhesHtml}
-      </div>`;
-  }).join("");
+    return { label: bloco.mesLabel, total: bloco.total, detalhesHtml };
+  });
+  renderProjecaoDual("projecao-lista", blocos);
 }
 
 function toggleProjecao(bloco) {
@@ -2327,6 +2349,150 @@ function renderCategoriasDual(containerId, porCat) {
   container.dataset.vista = "pizza";
 }
 
+// ===== Gráfico de linha da projeção (SVG vanilla, sem biblioteca) =====
+let linhaSeq = 0;
+
+// pontos: [{rotulo: "10/2026", valor: 180}] — ordenados por mês
+function htmlLinhaProjecao(pontos) {
+  if (!pontos.length) {
+    return '<span style="color:var(--muted);font-size:0.85rem;">Sem dados para projeção.</span>';
+  }
+  const W = 640, H = 200, L = 46, R = 10, T = 16, B = 24;
+  const iw = W - L - R, ih = H - T - B;
+  const max = Math.max(...pontos.map(p => p.valor));
+  const escala = max > 0 ? max : 1;
+  const xy = pontos.map((p, i) => ({
+    x: L + (pontos.length === 1 ? iw / 2 : (i / (pontos.length - 1)) * iw),
+    y: T + ih - (p.valor / escala) * ih,
+  }));
+  const path = xy.map((p, i) => `${i ? "L" : "M"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+  const area = `${path} L${xy[xy.length - 1].x.toFixed(1)},${T + ih} L${xy[0].x.toFixed(1)},${T + ih} Z`;
+  const gid = "gproj" + (++linhaSeq);   // id único por render (gradiente)
+  const dots = xy.map((p, i) =>
+    `<circle class="linha-ponto" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="4"
+       fill="var(--accent)" stroke="var(--bg)" stroke-width="1.5" style="cursor:pointer"
+       data-rotulo="${escHtml(pontos[i].rotulo)}" data-valor="${pontos[i].valor}"></circle>`
+  ).join("");
+  // Rótulos de mês "10/2026" → "10/26"; com muitos pontos, pula alternados
+  const labels = pontos.map((p, i) => {
+    if (pontos.length > 8 && i % 2 === 1) return "";
+    const partes = String(p.rotulo).split("/");
+    const curto = partes.length === 2 ? `${partes[0]}/${partes[1].slice(2)}` : p.rotulo;
+    return `<text x="${xy[i].x.toFixed(1)}" y="${H - 6}" font-size="9" fill="var(--muted)" text-anchor="middle">${escHtml(curto)}</text>`;
+  }).join("");
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block" role="img" aria-label="Projeção de gastos por mês">
+    <defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="var(--accent)" stop-opacity="0.30"/>
+      <stop offset="100%" stop-color="var(--accent)" stop-opacity="0"/>
+    </linearGradient></defs>
+    <line x1="${L}" y1="${T}" x2="${L}" y2="${T + ih}" stroke="var(--border)"/>
+    <line x1="${L}" y1="${T + ih}" x2="${L + iw}" y2="${T + ih}" stroke="var(--border)"/>
+    <path d="${area}" fill="url(#${gid})"/>
+    <path d="${path}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+    ${dots}
+    <text x="${L}" y="${T - 4}" font-size="10" fill="var(--muted)" text-anchor="start">${formatarMoeda(max)}</text>
+    ${labels}
+  </svg>`;
+}
+
+// ===== Tooltip dos pontos do gráfico de projeção (hover + clique/toque) =====
+let tooltipLinha = null;
+
+function garantirTooltipLinha() {
+  if (!tooltipLinha) {
+    tooltipLinha = document.createElement("div");
+    tooltipLinha.style.cssText =
+      "position:fixed;pointer-events:none;background:var(--card);" +
+      "border:1px solid var(--border);border-radius:6px;padding:6px 10px;" +
+      "font-size:0.8rem;z-index:1200;display:none;" +
+      "box-shadow:0 8px 24px rgba(0,0,0,0.4);";
+    document.body.appendChild(tooltipLinha);
+  }
+  return tooltipLinha;
+}
+
+function mostrarTooltipLinha(ponto, x, y) {
+  const tt = garantirTooltipLinha();
+  tt.innerHTML = `<strong>${ponto.dataset.rotulo}</strong> · ${formatarMoeda(ponto.dataset.valor)}`;
+  tt.style.display = "block";
+  // Reposiciona se perto da borda direita/inferior da janela
+  const w = tt.offsetWidth, h = tt.offsetHeight;
+  tt.style.left = Math.min(x + 12, window.innerWidth - w - 8) + "px";
+  tt.style.top = Math.min(y + 12, window.innerHeight - h - 8) + "px";
+}
+
+function esconderTooltipLinha() {
+  if (tooltipLinha) tooltipLinha.style.display = "none";
+}
+
+// Delegação: funciona mesmo depois de cada re-render do SVG
+document.addEventListener("mouseover", function(e) {
+  const ponto = e.target.closest && e.target.closest("circle.linha-ponto");
+  if (ponto) mostrarTooltipLinha(ponto, e.clientX, e.clientY);
+});
+document.addEventListener("mousemove", function(e) {
+  if (tooltipLinha && tooltipLinha.style.display === "block") {
+    mostrarTooltipLinha._repos ? null : null;
+    const tt = tooltipLinha;
+    const w = tt.offsetWidth, h = tt.offsetHeight;
+    tt.style.left = Math.min(e.clientX + 12, window.innerWidth - w - 8) + "px";
+    tt.style.top = Math.min(e.clientY + 12, window.innerHeight - h - 8) + "px";
+  }
+});
+document.addEventListener("mouseout", function(e) {
+  if (e.target.closest && e.target.closest("circle.linha-ponto")) {
+    esconderTooltipLinha();
+  }
+});
+// Toque/clique: toggle perto do ponto (mobile não tem hover)
+document.addEventListener("click", function(e) {
+  const ponto = e.target.closest && e.target.closest("circle.linha-ponto");
+  if (!ponto) { esconderTooltipLinha(); return; }
+  const r = ponto.getBoundingClientRect();
+  if (tooltipLinha && tooltipLinha.style.display === "block") {
+    esconderTooltipLinha();
+  } else {
+    mostrarTooltipLinha(ponto, r.left + r.width / 2, r.top);
+  }
+});
+
+// Toggle Gráfico/Lista (padrão: gráfico) — mesmo padrão de alternarVista()
+function htmlToggleProj(containerId) {
+  return `<div class="vista-toggle" role="group" aria-label="Visualização da projeção">
+    <button class="vt-btn ativo" onclick="alternarProj('${containerId}','grafico',this)">Gráfico</button>
+    <button class="vt-btn" onclick="alternarProj('${containerId}','lista',this)">Lista</button>
+  </div>`;
+}
+
+function alternarProj(containerId, vista, btn) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  container.querySelectorAll(":scope > .grafico, :scope > .lista").forEach(el => {
+    el.style.display = el.classList.contains(vista) ? "" : "none";
+  });
+  btn.parentElement.querySelectorAll(".vt-btn").forEach(b => b.classList.toggle("ativo", b === btn));
+}
+
+// Render dual das seções de projeção.
+// blocos: [{label: "10/2026", total: 180, detalhesHtml: "..."}] ordenados.
+// detalhesHtml é a lista expansível que já existia (toggleProjecao).
+function renderProjecaoDual(containerId, blocos) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  const maxTotal = Math.max(...blocos.map(b => b.total)) || 1;
+  const pontos = blocos.map(b => ({ rotulo: b.label, valor: b.total }));
+  const lista = blocos.map((b, idx) => `
+    <div class="categoria-item" style="cursor:pointer" onclick="toggleProjecao(this)">
+      <span class="cat-name">${escHtml(b.label)}</span>
+      <div class="cat-bar-container" style="flex:1"><div class="cat-bar" style="width:${Math.round((b.total / maxTotal) * 100)}%;background:${corCategoria(b.label)};"></div></div>
+      <span class="cat-valor">${formatarMoeda(b.total)}</span>
+    </div>
+    <div class="projecao-detalhes" style="display:${idx === 0 ? "block" : "none"}">${b.detalhesHtml}</div>`).join("");
+  container.innerHTML = htmlToggleProj(containerId) +
+    `<div class="grafico">${htmlLinhaProjecao(pontos)}</div>` +
+    `<div class="lista" style="display:none;">${lista}</div>`;
+}
+
 // ===== Comparativo mês a mês =====
 async function abrirComparativo() {
   mostrarTelas("comparativo");
@@ -2491,26 +2657,19 @@ function renderConsProj(c) {
     lista.innerHTML = '<span style="color:var(--muted);font-size:0.85rem;">Sem parcelas nem recorrentes pendentes.</span>';
     return;
   }
-  let maxTotal = 0;
-  chaves.forEach(k => { const v = parseFloat(c.projecao[k].total); if (v > maxTotal) maxTotal = v; });
-  lista.innerHTML = chaves.map((k, idx) => {
+  const blocos = chaves.map(k => {
     const bloco = c.projecao[k];
-    const pct = maxTotal > 0 ? Math.round((parseFloat(bloco.total) / maxTotal) * 100) : 0;
     const label = k.split("-").reverse().join("/");
-    const detalhes = bloco.linhas.map(l =>
+    const detalhesHtml = bloco.linhas.map(l =>
       `<div style="display:none;font-size:0.8rem;color:var(--muted);padding-left:16px;border-bottom:1px solid var(--border);">
         <span>${escHtml(l.descricao)}</span>
         <span style="float:right">${l.cartao ? escHtml(l.cartao) + " · " : ""}${l.info === "Recorrente"
           ? '<span class="badge-proj-recorrente">' + ICONE_RECORRENTE + 'Recorrente</span> · ' + formatarMoeda(l.valor)
           : "parcela " + escHtml(l.info) + " · " + formatarMoeda(l.valor)}</span>
       </div>`).join("");
-    return `<div class="categoria-item" style="cursor:pointer" onclick="toggleProjecao(this)">
-        <span class="cat-name">${label}</span>
-        <div class="cat-bar-container" style="flex:1"><div class="cat-bar" style="width:${pct}%;background:${corCategoria(label)};"></div></div>
-        <span class="cat-valor">${formatarMoeda(bloco.total)}</span>
-      </div>
-      <div class="projecao-detalhes" style="display:${idx === 0 ? "block" : "none"}">${detalhes}</div>`;
-  }).join("");
+    return { label, total: parseFloat(bloco.total), detalhesHtml };
+  });
+  renderProjecaoDual("cons-proj-lista", blocos);
 }
 
 // Bindings (perto dos bindings do Comparativo):
