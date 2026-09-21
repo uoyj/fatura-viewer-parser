@@ -39,7 +39,7 @@ VOLUME ["/app/data"]
 
 # Healthcheck
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://127.0.0.1:8000/parsers || exit 1
+    CMD curl -f http://127.0.0.1:8000/api/parsers || exit 1
 
 # Rodar como usuario app
 USER app

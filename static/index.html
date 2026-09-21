@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="/app.css">
 <script src="/vendor/alpine.min.js" defer></script>
 </head><body x-data="app" x-init="iniciar()" x-cloak
+      @popstate.window="route()"
       @keydown.window="atalhoGlobal($event)"
       @mouseover="aoHoverPonto($event)"
       @mousemove="aoMoverMouse($event)"
@@ -301,7 +302,7 @@
 <section id="tela-dicionario" class="tela" x-show="tela === 'dicionario'" x-cloak>
   <div class="dic-header">
     <h2>Dicionário de categorias</h2>
-    <button class="btn-outline" id="btn-voltar-dicionario" @click="mostrarTelas(fatura ? 'viewer' : 'upload')">Voltar</button>
+    <button class="btn-outline" id="btn-voltar-dicionario" @click="voltar()">Voltar</button>
   </div>
 
   <!-- Card informativo: papel de cada coisa (topo da tela, antes das regras) -->
@@ -377,7 +378,7 @@
 <section id="tela-comparativo" class="tela" x-show="tela === 'comparativo'" x-cloak>
   <div class="dic-header">
     <h2>Comparativo mês a mês</h2>
-    <button class="btn-outline" id="btn-voltar-comparativo" @click="mostrarTelas(fatura ? 'viewer' : 'upload')">Voltar</button>
+    <button class="btn-outline" id="btn-voltar-comparativo" @click="voltar()">Voltar</button>
   </div>
   <div id="comp-erro" class="erro-box" x-show="compErro" x-text="compErro"></div>
   <div id="comp-vazio" class="categoria-section" x-show="compVazio">
@@ -456,7 +457,7 @@
 <section id="tela-consolidado" class="tela" x-show="tela === 'consolidado'" x-cloak>
   <div class="dic-header">
     <h2>Visão consolidada</h2>
-    <button class="btn-outline" id="btn-voltar-consolidado" @click="mostrarTelas(fatura ? 'viewer' : 'upload')">Voltar</button>
+    <button class="btn-outline" id="btn-voltar-consolidado" @click="voltar()">Voltar</button>
   </div>
   <div id="cons-erro" class="erro-box" x-show="consErro" x-text="consErro"></div>
   <div id="cons-vazio" class="categoria-section" x-show="consVazio">

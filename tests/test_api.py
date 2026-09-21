@@ -6,11 +6,11 @@ Padrão da suíte: os testes que sobem TestClient e fazem upload de PDF são
 fundidos para reduzir o número de uploads — cada upload reparseia o PDF real.
 
 Cobre:
-- POST /faturas: upload OK (campos, transações, PDF no disco, JSONL, sem traceback)
-- POST /faturas: versão explícita
-- POST /faturas: banco inexistente / arquivo não-PDF → 422 {"erro": ...}
-- GET /parsers, GET /faturas (vazio), GET /faturas/{id}, 404
-- DELETE /faturas/{id}: remove JSONL + PDF do disco; 404 quando inexistente
+- POST /api/faturas: upload OK (campos, transações, PDF no disco, JSONL, sem traceback)
+- POST /api/faturas: versão explícita
+- POST /api/faturas: banco inexistente / arquivo não-PDF → 422 {"erro": ...}
+- GET /api/parsers, GET /faturas (vazio), GET /faturas/{id}, 404
+- DELETE /api/faturas/{id}: remove JSONL + PDF do disco; 404 quando inexistente
 - Override manual valendo IMEDIATAMENTE no GET (sem /recategorizar)
 
 ISOLAMENTO OBRIGATORIO: os testes NUNCA tocam no data/ real do usuario.
@@ -57,7 +57,7 @@ def _upload(client, banco: str = "sofisa", **data) -> dict:
     """Faz upload de in/Fatura.pdf e devolve o JSON da resposta (sem traceback)."""
     with open(FATURA_PDF, "rb") as f:
         resp = client.post(
-            "/faturas",
+            "/api/faturas",
             files={"arquivo": ("Fatura.pdf", f, "application/pdf")},
             data={"banco": banco, **data},
         )
@@ -99,7 +99,7 @@ def test_upload_persiste_e_leitura_completa(client):
     assert reg["payload"]["banco"] == "sofisa"
 
     # GET /faturas lista 1 item
-    faturas = client.get("/faturas").json()
+    faturas = client.get("/api/faturas").json()
     assert len(faturas) == 1
     assert faturas[0]["id"] == fatura_id
     assert faturas[0]["banco"] == "sofisa"
@@ -107,14 +107,14 @@ def test_upload_persiste_e_leitura_completa(client):
     assert faturas[0]["total_a_pagar"] == "6727.55"
 
     # GET /faturas/{id} devolve o payload completo
-    completo = client.get(f"/faturas/{fatura_id}").json()
+    completo = client.get(f"/api/faturas/{fatura_id}").json()
     assert completo["id"] == fatura_id
     assert completo["banco"] == "sofisa"
     assert len(completo["transacoes"]) == 96
 
     # id inexistente -> 404
     assert client.get(
-        "/faturas/00000000-0000-0000-0000-000000000000").status_code == 404
+        "/api/faturas/00000000-0000-0000-0000-000000000000").status_code == 404
 
 
 @slow
@@ -130,7 +130,7 @@ def test_upload_rejeitado_422(client):
     # banco inexistente
     with open(FATURA_PDF, "rb") as f:
         resp = client.post(
-            "/faturas",
+            "/api/faturas",
             files={"arquivo": ("Fatura.pdf", f, "application/pdf")},
             data={"banco": "naoexiste"},
         )
@@ -141,7 +141,7 @@ def test_upload_rejeitado_422(client):
 
     # arquivo .txt
     resp = client.post(
-        "/faturas",
+        "/api/faturas",
         files={"arquivo": ("test.txt", b"hello world", "text/plain")},
         data={"banco": "sofisa"},
     )
@@ -151,13 +151,13 @@ def test_upload_rejeitado_422(client):
 
 def test_get_parsers_e_faturas_vazio(client):
     """Sem upload: /parsers lista os bancos e /faturas é [] (jsonl ausente)."""
-    resp = client.get("/parsers")
+    resp = client.get("/api/parsers")
     assert resp.status_code == 200
     data = resp.json()
     assert "sofisa" in data
     assert "2026-09" in data["sofisa"]
 
-    resp = client.get("/faturas")
+    resp = client.get("/api/faturas")
     assert resp.status_code == 200
     assert resp.json() == []
 
@@ -171,16 +171,16 @@ def test_delete_remove_jsonl_e_pdf(client):
     """DELETE remove do JSONL + PDF do disco; 404 quando não existe."""
     fatura_id = _upload(client)["id"]
 
-    resp = client.delete(f"/faturas/{fatura_id}")
+    resp = client.delete(f"/api/faturas/{fatura_id}")
     assert resp.status_code == 200
     assert resp.json() == {"ok": True, "id": fatura_id}
 
     assert not (api.UPLOADS_DIR / f"{fatura_id}.pdf").exists(), "PDF nao removido"
-    assert client.get(f"/faturas/{fatura_id}").status_code == 404
-    assert client.get("/faturas").json() == []
+    assert client.get(f"/api/faturas/{fatura_id}").status_code == 404
+    assert client.get("/api/faturas").json() == []
 
     assert client.delete(
-        "/faturas/00000000-0000-0000-0000-000000000000").status_code == 404
+        "/api/faturas/00000000-0000-0000-0000-000000000000").status_code == 404
 
 
 # ---------------------------------------------------------------------------
@@ -192,11 +192,11 @@ def test_delete_remove_jsonl_e_pdf(client):
 DESCRICAO = "Compra a Vista NONO CAFE"
 CATEGORIA_REGRA = "Restaurante/Cafe"
 CATEGORIA_OVERRIDE = "Teste"
-OVERRIDE_URL = f"/overrides/{quote(DESCRICAO, safe='*')}"
+OVERRIDE_URL = f"/api/overrides/{quote(DESCRICAO, safe='*')}"
 
 
 def _cats_no_get(client, fid) -> list[str]:
-    transacoes = client.get(f"/faturas/{fid}").json()["transacoes"]
+    transacoes = client.get(f"/api/faturas/{fid}").json()["transacoes"]
     return [t["categoria"] for t in transacoes if t["descricao"] == DESCRICAO]
 
 
@@ -206,7 +206,7 @@ def test_override_reflete_no_get_e_jsonl_fica_intacto(client):
     fid = _upload(client)["id"]
 
     # sem override: categoria vem da REGRA e /overrides está vazio
-    assert client.get("/overrides").json() == {}
+    assert client.get("/api/overrides").json() == {}
     antes = _cats_no_get(client, fid)
     assert len(antes) == 9
     assert set(antes) == {CATEGORIA_REGRA}

@@ -317,6 +317,9 @@ document.addEventListener("alpine:init", () => {
   Alpine.data("app", () => ({
     // ===== Telas / navegação =====
     tela: "upload",              // upload | viewer | dicionario | comparativo | consolidado
+    view: { name: "upload", id: null },   // view derivada da URL ({ name, id }) — history routing
+    carregando: false,           // true enquanto route() carrega os dados da view da URL
+    rotaToken: 0,                // descarta resposta de navegação já obsoleta (back/forward rápido)
     secaoAtiva: null,            // scroll-spy da anchor-nav
     scrollIntencional: false,    // ignora o scroll-spy durante o scroll programático
 
@@ -606,7 +609,7 @@ document.addEventListener("alpine:init", () => {
     // ---------------------------------------------------------------- init
     async iniciar() {
       try {
-        this.parsers = await apiGET("/parsers");
+        this.parsers = await apiGET("/api/parsers");
       } catch(e) {
         console.error("Erro carregando parsers:", e);
       }
@@ -616,12 +619,13 @@ document.addEventListener("alpine:init", () => {
       await this.carregarFaturas();
 
       this.iniciarScrollSpy();
+      await this.route();                          // aplica a view da URL (F5 / link direto)
     },
 
     // ===== Carregar lista de faturas =====
     async carregarFaturas() {
       try {
-        this.faturas = await apiGET("/faturas");
+        this.faturas = await apiGET("/api/faturas");
       } catch(e) {
         console.error("Erro carregando faturas:", e);
       }
@@ -630,7 +634,7 @@ document.addEventListener("alpine:init", () => {
     // ===== Carregar fatura específica =====
     async carregarFatura(id) {
       try {
-        this.fatura = await apiGET(`/faturas/${id}`);
+        this.fatura = await apiGET(`/api/faturas/${id}`);
 
         // Popular selects apenas uma vez por fatura
         this.selectsPopulados = false;
@@ -642,9 +646,10 @@ document.addEventListener("alpine:init", () => {
         await this.carregarRecorrentes();
 
         this.renderizarViewer();
-        this.mostrarTelas("viewer");
+        return true;                               // quem troca de tela é o route()
       } catch(e) {
         console.error("Erro carregando fatura:", e);
+        return false;                              // route() trata o 404
       }
     },
 
@@ -653,14 +658,14 @@ document.addEventListener("alpine:init", () => {
       if (!confirm("Excluir esta fatura e o PDF associado?")) return;
 
       try {
-        await apiDELETE(`/faturas/${id}`);
+        await apiDELETE(`/api/faturas/${id}`);
         await this.carregarFaturas();
 
         // Se a fatura atual foi deletada NÃO escolhemos outra sozinhos: volta ao
         // placeholder + tela de upload e o usuário seleciona no dropdown (FRONT 3).
         if (this.fatura && this.fatura.id === id) {
           this.fatura = null;
-          this.mostrarTelas("upload");
+          this.redirecionar("/");                  // não deixa /view/<id> morto no histórico
         }
       } catch(err) {
         if (err.message.includes("404")) {
@@ -679,9 +684,86 @@ document.addEventListener("alpine:init", () => {
       this.tela = tela;
     },
 
+    // ===== Rotas de URL (history API) =====
+    // Mapa URL → view:
+    //   /                → upload (tela inicial; lista/dropdown de faturas)
+    //   /view/<uuid>     → viewer (detalhe da fatura)
+    //   /dicionario      → dicionario
+    //   /comparativo     → comparativo
+    //   /consolidado     → consolidado
+    // route() é o ÚNICO lugar que troca de tela: os botões chamam navigar() e
+    // as funções de fetch existentes continuam sendo as mesmas (nada duplicado).
+    async route() {
+      const token = ++this.rotaToken;      // marca esta navegação como a atual
+      const path = location.pathname.replace(/\/+$/, "") || "/";
+      const m = path.match(/^\/view\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i);
+
+      this.carregando = true;
+      try {
+        if (m) {
+          this.view = { name: "viewer", id: m[1] };
+          const ok = await this.carregarFatura(m[1]);
+          if (token !== this.rotaToken) return;             // outra navegação venceu
+          if (!ok) { this.redirecionar("/", "Fatura não encontrada."); return; }
+          this.mostrarTelas("viewer");
+          return;
+        }
+        if (path === "/dicionario") {
+          this.view = { name: "dicionario", id: null };
+          this.mostrarTelas("dicionario");
+          this.carregarRegrasDic();
+          this.carregarOverridesDic();
+          return;
+        }
+        if (path === "/comparativo") {
+          this.view = { name: "comparativo", id: null };
+          this.mostrarTelas("comparativo");
+          await this.carregarComparativo();
+          return;
+        }
+        if (path === "/consolidado") {
+          this.view = { name: "consolidado", id: null };
+          this.mostrarTelas("consolidado");
+          this.cons = null;               // sempre recarrega (upload/delete deixam stale)
+          await this.carregarConsolidado();
+          return;
+        }
+        if (path === "/") {
+          this.view = { name: "upload", id: null };
+          this.mostrarTelas("upload");
+          return;
+        }
+        // URL desconhecida (ou /view/<id> fora do padrão UUID)
+        this.redirecionar("/", "Página não encontrada.");
+      } finally {
+        if (token === this.rotaToken) this.carregando = false;
+      }
+    },
+
+    // Clique em botão/atalho: empurra a URL e deixa route() aplicar o estado.
+    // Caminho igual não cria entrada nova no histórico.
+    navigar(path) {
+      if (path !== location.pathname) history.pushState({}, "", path);
+      this.route();
+    },
+
+    // Rota inválida / fatura inexistente: SUBSTITUI a entrada (com push o botão
+    // Voltar voltaria pra URL ruim, em loop) e avisa na tela inicial.
+    redirecionar(path, msg) {
+      if (path !== location.pathname) history.replaceState({}, "", path);
+      if (msg) this.uploadErro = msg;
+      this.route();
+    },
+
+    // Botões "Voltar" das telas internas: mesma regra de antes (tem fatura
+    // carregada? volta pro viewer; senão, pra tela inicial), agora via URL.
+    voltar() {
+      this.navigar(this.fatura ? `/view/${this.fatura.id}` : "/");
+    },
+
     // ===== Upload =====
     novaFatura() {
-      this.mostrarTelas("upload");
+      this.navigar("/");
       const form = document.getElementById("form-upload");
       if (form) form.reset();          // limpa o input de arquivo do DOM
       this.enviando = false;
@@ -709,7 +791,7 @@ document.addEventListener("alpine:init", () => {
       const fd = new FormData();
       fd.append("arquivo", arquivo);
       try {
-        const resp = await fetch("/inferir-banco", { method: "POST", body: fd });
+        const resp = await fetch("/api/inferir-banco", { method: "POST", body: fd });
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const dados = await resp.json();
         if (dados.banco) {
@@ -742,7 +824,7 @@ document.addEventListener("alpine:init", () => {
       formData.append("banco", banco);
 
       try {
-        const resp = await fetch("/faturas", { method: "POST", body: formData });
+        const resp = await fetch("/api/faturas", { method: "POST", body: formData });
         const text = await resp.text();
 
         // Só tenta JSON.parse se content-type for application/json
@@ -766,7 +848,7 @@ document.addEventListener("alpine:init", () => {
           this.fatura = data;
           await this.carregarFaturas(); // atualiza lista
           this.renderizarViewer();
-          this.mostrarTelas("viewer");
+          this.navigar(`/view/${data.id}`);        // URL do detalhe da fatura enviada
         } else {
           // Nao-JSON ou status inesperado — debug remoto
           this.uploadErro = `Erro do servidor (HTTP ${resp.status}): ${text.substring(0, 200)}`;
@@ -821,7 +903,7 @@ document.addEventListener("alpine:init", () => {
       if (alvo) this.selecionarCmdk(alvo.id);
     },
 
-    selecionarCmdk(id) { this.fecharCmdk(); this.carregarFatura(id); },
+    selecionarCmdk(id) { this.fecharCmdk(); this.navigar(`/view/${id}`); },
 
     async deletarFaturaCmdk(id) {
       await this.deletarFatura(id);   // recarrega faturas: a lista já deriva do estado
@@ -930,13 +1012,13 @@ document.addEventListener("alpine:init", () => {
     // alimentado pelas faturas carregadas e pelo Dicionário.
     async carregarCategoriasConhecidas() {
       try {
-        const dados = await apiGET("/categorias");
+        const dados = await apiGET("/api/categorias");
         this.registrarCategorias((dados.regras || []).map(r => r.categoria));
       } catch (e) {
         console.warn("Não foi possível carregar /categorias (rótulos):", e.message);
       }
       try {
-        const overrides = await apiGET("/overrides");
+        const overrides = await apiGET("/api/overrides");
         this.registrarCategorias(Object.values(overrides || {}));
       } catch (e) {
         console.warn("Não foi possível carregar /overrides (rótulos):", e.message);
@@ -951,7 +1033,7 @@ document.addEventListener("alpine:init", () => {
     // o override é global por descrição. Lança em falha; quem chama faz o revert.
     async ensinarCategoriaGlobal(descricaoCrua, rotulo) {
       let chave = normalizarDescricao(descricaoCrua);
-      const resp = await apiPUT(`/overrides/${encodeURIComponent(descricaoCrua)}`, { categoria: rotulo });
+      const resp = await apiPUT(`/api/overrides/${encodeURIComponent(descricaoCrua)}`, { categoria: rotulo });
       if (resp && resp.chave) chave = resp.chave;   // backend é a fonte da verdade
 
       let afetadas = 0;
@@ -1066,7 +1148,7 @@ document.addEventListener("alpine:init", () => {
     // linha aparece marcada (e o console avisa).
     async carregarRecorrentes() {
       try {
-        const dados = await apiGET("/recorrentes");
+        const dados = await apiGET("/api/recorrentes");
         this.recorrentes = new Set(Object.keys(dados || {}));
       } catch (e) {
         this.recorrentes = new Set();
@@ -1085,10 +1167,10 @@ document.addEventListener("alpine:init", () => {
       this.emCursoRec.add(String(t.id));
       try {
         if (marcado) {
-          await apiDELETE(`/recorrentes/${encodeURIComponent(t.descricao)}`);
+          await apiDELETE(`/api/recorrentes/${encodeURIComponent(t.descricao)}`);
         } else {
           // t.descricao CRUA — o backend normaliza (chave = descrição normalizada)
-          const resp = await apiPUT(`/recorrentes/${encodeURIComponent(t.descricao)}`, {});
+          const resp = await apiPUT(`/api/recorrentes/${encodeURIComponent(t.descricao)}`, {});
           if (resp && resp.chave) chave = resp.chave;   // backend é a fonte da verdade
         }
       } catch (e) {
@@ -1271,7 +1353,7 @@ document.addEventListener("alpine:init", () => {
 
     async carregarRegrasDic() {
       try {
-        const data = await apiGET("/categorias");
+        const data = await apiGET("/api/categorias");
         this.regras = (data.regras || []).map(r => novaRegra(
           r.categoria || "",
           Array.isArray(r.padroes) ? [...r.padroes] : [],
@@ -1334,7 +1416,7 @@ document.addEventListener("alpine:init", () => {
       const regras = this.validarRegrasTela();
       if (!regras) return;   // inválido -> NAO envia
       try {
-        const resp = await apiPUT("/categorias", { regras });
+        const resp = await apiPUT("/api/categorias", { regras });
         const salvas = resp && resp.regras ? resp.regras : regras;
         this.regras = salvas.map(r => novaRegra(r.categoria, [...r.padroes]));
         this.registrarCategorias(this.regras.map(r => r.categoria));   // regras salvas viram rótulos conhecidos
@@ -1348,7 +1430,7 @@ document.addEventListener("alpine:init", () => {
 
     async carregarOverridesDic() {
       try {
-        this.overrides = await apiGET("/overrides");
+        this.overrides = await apiGET("/api/overrides");
         this.overridesErro = "";
       } catch (e) {
         this.overridesErro = e.message;
@@ -1357,7 +1439,7 @@ document.addEventListener("alpine:init", () => {
 
     async removerOverrideDic(chave) {
       try {
-        await apiDELETE(`/overrides/${encodeURIComponent(chave)}`);   // chave já vem normalizada
+        await apiDELETE(`/api/overrides/${encodeURIComponent(chave)}`);   // chave já vem normalizada
         this.mostrarMsgDic("msgOverrides", `Ensinamento removido: ${chave}`, "ok");
       } catch (e) {
         this.mostrarMsgDic("msgOverrides", `Não foi possível remover: ${e.message}`, "erro");
@@ -1378,7 +1460,7 @@ document.addEventListener("alpine:init", () => {
       this.$nextTick(() => this.focarUltimoBlocoRegra());
 
       try {
-        await apiDELETE(`/overrides/${encodeURIComponent(chave)}`);
+        await apiDELETE(`/api/overrides/${encodeURIComponent(chave)}`);
         this.mostrarMsgDic("msgOverrides",
           `Ensino convertido em regra: "${chave}" → ${categoria || "(sem categoria)"}. Revise o bloco de regras e clique em “Salvar regras”.`, "ok");
       } catch (e) {
@@ -1394,10 +1476,10 @@ document.addEventListener("alpine:init", () => {
       if (!confirm("Reaplicar regras + ensinamentos em todas as faturas salvas?")) return;
       this.recategorizando = true;
       try {
-        const resp = await apiPOST("/recategorizar");
+        const resp = await apiPOST("/api/recategorizar");
         this.mostrarMsgDic("msgRecat", `${resp.recategorizadas} faturas recategorizadas.`, "ok");
         if (this.fatura) {
-          this.fatura = await apiGET(`/faturas/${this.fatura.id}`);
+          this.fatura = await apiGET(`/api/faturas/${this.fatura.id}`);
           this.selectsPopulados = false;   // categorias novas devem entrar no filtro
           this.renderizarViewer();
         }
@@ -1409,15 +1491,12 @@ document.addEventListener("alpine:init", () => {
     },
 
     abrirDicionario() {
-      this.mostrarTelas("dicionario");   // esconde a anchor-nav (não é viewer)
-      this.carregarRegrasDic();
-      this.carregarOverridesDic();
+      this.navigar("/dicionario");       // route() troca a tela e carrega os dados
     },
 
     // ===== Comparativo mês a mês =====
-    async abrirComparativo() {
-      this.mostrarTelas("comparativo");
-      await this.carregarComparativo();
+    abrirComparativo() {
+      this.navigar("/comparativo");
     },
 
     async carregarComparativo() {
@@ -1427,7 +1506,7 @@ document.addEventListener("alpine:init", () => {
 
       let c;
       try {
-        c = await apiGET("/comparativo");
+        c = await apiGET("/api/comparativo");
       } catch (e) {
         this.compErro = `Não foi possível carregar o comparativo: ${e.message}`;
         return;
@@ -1441,10 +1520,8 @@ document.addEventListener("alpine:init", () => {
     },
 
     // ===== Consolidado: todas as faturas somadas por mês + projeção =====
-    async abrirConsolidado() {
-      this.mostrarTelas("consolidado");
-      this.cons = null;   // sempre recarrega (upload/delete deixam stale)
-      await this.carregarConsolidado();
+    abrirConsolidado() {
+      this.navigar("/consolidado");
     },
 
     async carregarConsolidado() {
@@ -1454,7 +1531,7 @@ document.addEventListener("alpine:init", () => {
 
       let c;
       try {
-        c = await apiGET("/consolidado");
+        c = await apiGET("/api/consolidado");
       } catch (e) {
         this.consErro = `Não foi possível carregar: ${e.message}`;
         return;

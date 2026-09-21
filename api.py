@@ -4,22 +4,22 @@ API HTTP para fatura-viewer (FastAPI).
 Uso interno de casa — sem autenticação.
 
 Endpoints:
-  POST   /faturas          — upload de PDF, parseia e persiste
-  GET    /faturas          — lista resumida de faturas
-  GET    /faturas/{id}     — retorna fatura completa
-  DELETE /faturas/{id}     — remove fatura + PDF
-  GET    /parsers          — lista parsers registrados
-  POST   /inferir-banco    — sugere o banco pelos marcadores de texto do PDF
+  POST   /api/faturas          — upload de PDF, parseia e persiste
+  GET    /api/faturas          — lista resumida de faturas
+  GET    /api/faturas/{id}     — retorna fatura completa
+  DELETE /api/faturas/{id}     — remove fatura + PDF
+  GET    /api/parsers          — lista parsers registrados
+  POST   /api/inferir-banco    — sugere o banco pelos marcadores de texto do PDF
 
-  GET    /categorias       — regras de categorização (data/categorias.json)
-  PUT    /categorias       — substitui as regras (valida; 422 se inválido)
-  GET    /overrides        — overrides manuais globais (data/overrides.json)
-  PUT    /overrides/{desc} — grava override da descrição normalizada
-  DELETE /overrides/{desc} — remove override (404 se não existir)
-  GET    /recorrentes      — gastos recorrentes (data/recorrentes.json)
-  PUT    /recorrentes/{desc}    — marca descrição como recorrente (flag global)
-  DELETE /recorrentes/{desc}    — desmarca (404 se não estiver marcada)
-  POST   /recategorizar    — re-aplica regras+overrides em todas as faturas
+  GET    /api/categorias       — regras de categorização (data/categorias.json)
+  PUT    /api/categorias       — substitui as regras (valida; 422 se inválido)
+  GET    /api/overrides        — overrides manuais globais (data/overrides.json)
+  PUT    /api/overrides/{desc} — grava override da descrição normalizada
+  DELETE /api/overrides/{desc} — remove override (404 se não existir)
+  GET    /api/recorrentes      — gastos recorrentes (data/recorrentes.json)
+  PUT    /api/recorrentes/{desc}    — marca descrição como recorrente (flag global)
+  DELETE /api/recorrentes/{desc}    — desmarca (404 se não estiver marcada)
+  POST   /api/recategorizar    — re-aplica regras+overrides em todas as faturas
 
 Run:
   uvicorn api:app --reload
@@ -169,18 +169,18 @@ def _dict_para_fatura(payload: dict) -> Fatura | None:
 # Endpoints
 # ---------------------------------------------------------------------------
 
-@app.get("/comparativo")
+@app.get("/api/comparativo")
 async def comparativo():
     """Comparação mês a mês + anomalias sobre todas as faturas salvas."""
     return calcular_comparativo(_carregar_registros())
 
-@app.get("/consolidado")
+@app.get("/api/consolidado")
 async def consolidado():
     """Visão consolidada: histórico por mês + projeção de todas as faturas."""
     recorrentes = set(carregar_recorrentes(RECORRENTES_PATH) or {})
     return calcular_consolidado(_carregar_registros(), recorrentes)
 
-@app.post("/faturas")
+@app.post("/api/faturas")
 async def upload_fatura(arquivo: UploadFile = File(...), banco: str = Form(...), versao: str = "latest"):
     filename = arquivo.filename or ""
     if not filename.lower().endswith(".pdf"):
@@ -259,7 +259,7 @@ async def upload_fatura(arquivo: UploadFile = File(...), banco: str = Form(...),
     return aplicar_overrides(resposta, overrides_em_uso)
 
 
-@app.get("/faturas")
+@app.get("/api/faturas")
 async def listar_faturas():
     faturas = []
     for reg in _carregar_registros():
@@ -276,7 +276,7 @@ async def listar_faturas():
     return faturas
 
 
-@app.get("/faturas/{fatura_id}")
+@app.get("/api/faturas/{fatura_id}")
 async def get_fatura(fatura_id: str):
     reg = _encontrar_registro(fatura_id)
     if reg is None:
@@ -288,7 +288,7 @@ async def get_fatura(fatura_id: str):
     return aplicar_overrides(_com_ids(reg["payload"]), carregar_overrides(OVERRIDES_PATH))
 
 
-@app.delete("/faturas/{fatura_id}")
+@app.delete("/api/faturas/{fatura_id}")
 async def delete_fatura(fatura_id: str):
     reg = _encontrar_registro(fatura_id)
     if reg is None:
@@ -305,12 +305,12 @@ async def delete_fatura(fatura_id: str):
     return {"ok": True, "id": fatura_id}
 
 
-@app.get("/parsers")
+@app.get("/api/parsers")
 async def listar_parsers():
     return parsers_registrados()
 
 
-@app.post("/inferir-banco")
+@app.post("/api/inferir-banco")
 async def inferir_banco_endpoint(arquivo: UploadFile = File(...)):
     """
     Recebe um PDF e infere o banco pelos marcadores de texto do header.
@@ -350,13 +350,13 @@ async def inferir_banco_endpoint(arquivo: UploadFile = File(...)):
 # Categorias (regras editáveis) e overrides globais
 # ---------------------------------------------------------------------------
 
-@app.get("/categorias")
+@app.get("/api/categorias")
 async def get_categorias():
     """Conteúdo de data/categorias.json (cria o seed na primeira chamada)."""
     return {"regras": carregar_regras(CATEGORIAS_PATH)}
 
 
-@app.put("/categorias")
+@app.put("/api/categorias")
 async def put_categorias(request: Request):
     """
     Substitui as regras. Aceita {"regras": [...]} (formato do GET) ou lista pura.
@@ -378,13 +378,13 @@ async def put_categorias(request: Request):
     return {"regras": regras}
 
 
-@app.get("/overrides")
+@app.get("/api/overrides")
 async def get_overrides():
     """Overrides manuais globais: {descricao_normalizada: categoria}."""
     return carregar_overrides(OVERRIDES_PATH)
 
 
-@app.put("/overrides/{descricao}")
+@app.put("/api/overrides/{descricao}")
 async def put_override(descricao: str, request: Request):
     """
     Grava (ou substitui) o override da descrição normalizada.
@@ -411,7 +411,7 @@ async def put_override(descricao: str, request: Request):
     return {"chave": chave, "categoria": overrides[chave]}
 
 
-@app.delete("/overrides/{descricao}")
+@app.delete("/api/overrides/{descricao}")
 async def delete_override(descricao: str):
     """Remove o override da descrição normalizada. 404 se não existir."""
     chave = normalizar_descricao(descricao)
@@ -425,7 +425,7 @@ async def delete_override(descricao: str):
     return {"ok": True, "chave": chave}
 
 
-@app.get("/recorrentes")
+@app.get("/api/recorrentes")
 async def get_recorrentes():
     """
     Gastos recorrentes: {descricao_normalizada: true}.
@@ -439,7 +439,7 @@ async def get_recorrentes():
     return carregar_recorrentes(RECORRENTES_PATH)
 
 
-@app.put("/recorrentes/{descricao}")
+@app.put("/api/recorrentes/{descricao}")
 async def put_recorrente(descricao: str):
     """
     Marca a descrição normalizada como gasto recorrente. Sem body.
@@ -457,7 +457,7 @@ async def put_recorrente(descricao: str):
     return {"ok": True, "chave": chave}
 
 
-@app.delete("/recorrentes/{descricao}")
+@app.delete("/api/recorrentes/{descricao}")
 async def delete_recorrente(descricao: str):
     """Desmarca a descrição. 404 se não estiver marcada como recorrente."""
     chave = normalizar_descricao(descricao)
@@ -471,7 +471,7 @@ async def delete_recorrente(descricao: str):
     return {"ok": True, "chave": chave}
 
 
-@app.post("/recategorizar")
+@app.post("/api/recategorizar")
 async def recategorizar():
     """
     Re-aplica regras + overrides em TODAS as faturas de data/faturas.jsonl.
@@ -501,9 +501,41 @@ async def recategorizar():
     return {"recategorizadas": recategorizadas}
 
 
-# Servir frontend estático (após todas as rotas da API)
+# Servir frontend estático (SPA com history routing) — registrado por ÚLTIMO.
+# Resolução: 1) arquivo real de static/ entregue pelo MESMO StaticFiles de antes
+#              (HEAD, ETag/304, Range e a guarda de traversal ficam idênticos);
+#           2) senão index.html — o mesmo shell para /view/<id>, /dicionario,
+#              /comparativo e /consolidado (a URL é resolvida no cliente).
+# As rotas /api/* casam ANTES desta, então não são interceptadas; um /api/*
+# inexistente continua 404 (não vira HTML).
 from fastapi.staticfiles import StaticFiles
-app.mount("/", StaticFiles(directory="static", html=True), name="static")
+from fastapi.responses import FileResponse
+
+# O 404 do StaticFiles é starlette.exceptions.HTTPException (o HTTPException do
+# FastAPI é SUBCLASSE dela — `except fastapi.HTTPException` não pega o raise dele).
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
+STATIC_DIR = Path("static")
+_arquivos = StaticFiles(directory=str(STATIC_DIR), html=True)   # reuso, não é mount
+
+
+# methods GET+HEAD: o StaticFiles atendia HEAD (200); só com GET o HEAD viraria
+# 405 e mudaria o comportamento de quem faz HEAD nos assets.
+@app.api_route("/{full_path:path}", methods=["GET", "HEAD"])
+async def frontend(full_path: str, request: Request):
+    # Guarda: nada sob /api/ cai no SPA (typo de endpoint vira 404, não HTML)
+    if full_path == "api" or full_path.startswith("api/"):
+        raise HTTPException(status_code=404, detail="Not Found")
+
+    # get_response LEVANTA HTTPException(404) quando não acha o arquivo (usa o
+    # mesmo lookup_path do StaticFiles: guarda de traversal incluída).
+    try:
+        return await _arquivos.get_response(full_path, request.scope)
+    except StarletteHTTPException as exc:
+        if exc.status_code != 404:
+            raise
+
+    return FileResponse(STATIC_DIR / "index.html")   # rota do SPA: sempre o shell
 
 
 if __name__ == "__main__":
