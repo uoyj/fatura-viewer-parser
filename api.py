@@ -521,21 +521,14 @@ _arquivos = StaticFiles(directory=str(STATIC_DIR), html=True)   # reuso, não é
 
 # methods GET+HEAD: o StaticFiles atendia HEAD (200); só com GET o HEAD viraria
 # 405 e mudaria o comportamento de quem faz HEAD nos assets.
-@app.api_route("/{full_path:path}", methods=["GET", "HEAD"])
-async def frontend(full_path: str, request: Request):
-    # Guarda: nada sob /api/ cai no SPA (typo de endpoint vira 404, não HTML)
-    if full_path == "api" or full_path.startswith("api/"):
-        raise HTTPException(status_code=404, detail="Not Found")
+from fastapi.responses import FileResponse
 
-    # get_response LEVANTA HTTPException(404) quando não acha o arquivo (usa o
-    # mesmo lookup_path do StaticFiles: guarda de traversal incluída).
-    try:
-        return await _arquivos.get_response(full_path, request.scope)
-    except StarletteHTTPException as exc:
-        if exc.status_code != 404:
-            raise
-
-    return FileResponse(STATIC_DIR / "index.html")   # rota do SPA: sempre o shell
+@app.api_route("/{full_path:path}", methods=["GET", "HEAD"], include_in_schema=False)
+def spa_fallback(full_path: str):
+    arquivo = Path("static") / full_path
+    if full_path and arquivo.is_file():
+        return FileResponse(arquivo)
+    return FileResponse("static/index.html")
 
 
 if __name__ == "__main__":
