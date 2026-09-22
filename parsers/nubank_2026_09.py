@@ -209,18 +209,28 @@ def _extract_header(pages: list[dict]) -> dict:
 
     # --- Outros lançamentos (campo novo — nem toda fatura tem) ---
     # "Outros lançamentos R$ 131,91"
-    outros = Decimal(0)
+    outros = None
     m = RE_OUTROS.search(texto_completo)
     if m:
         outros = _parse_valor(m.group(1))
     else:
-        logger.warning("campo 'Outros lancamentos' não encontrado — assume R$ 0,00")
+        logger.warning("campo 'Outros lancamentos' não encontrado — mantendo None para derivação")
 
     # Se débitos não foi encontrado, mas temos total + saldo_anterior + creditos
     # Equação: saldo_anterior - creditos + debitos + outros = total_a_pagar
     # → debitos = total_a_pagar - saldo_anterior + creditos - outros
     if debitos is None and total_a_pagar is not None and saldo_anterior is not None and creditos is not None:
-        debitos = total_a_pagar - saldo_anterior + creditos - outros
+        debitos = total_a_pagar - saldo_anterior + creditos - (outros or Decimal(0))
+
+    # Derivar outros pelo resumo quando o campo explícito não existe
+    if (outros is None and total_a_pagar is not None
+            and saldo_anterior is not None and creditos is not None
+            and debitos is not None):
+        outros = total_a_pagar - saldo_anterior + creditos - debitos
+        logger.warning("outros_lancamentos derivado pela equação: R$ %s", outros)
+    if outros is None:
+        outros = Decimal(0)
+        logger.warning("campo 'Outros lancamentos' não encontrado — assume R$ 0,00")
 
     # --- Pagamento mínimo --
     pagamento_minimo = None

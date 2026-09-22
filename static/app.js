@@ -317,7 +317,7 @@ document.addEventListener("alpine:init", () => {
   Alpine.data("app", () => ({
     // ===== Telas / navegação =====
     tela: "upload",              // upload | viewer | dicionario | comparativo | consolidado
-    view: { name: "upload", id: null },   // view derivada da URL ({ name, id }) — history routing
+    view: { name: "lista", id: null },   // view derivada da URL ({ name, id }) — history routing
     carregando: false,           // true enquanto route() carrega os dados da view da URL
     rotaToken: 0,                // descarta resposta de navegação já obsoleta (back/forward rápido)
     secaoAtiva: null,            // scroll-spy da anchor-nav
@@ -686,26 +686,31 @@ document.addEventListener("alpine:init", () => {
 
     // ===== Rotas de URL (history API) =====
     // Mapa URL → view:
-    //   /                → upload (tela inicial; lista/dropdown de faturas)
-    //   /view/<uuid>     → viewer (detalhe da fatura)
+    //   /                → lista
+    //   /view/<uuid>     → detalhe (id no grupo 1)
     //   /dicionario      → dicionario
-    //   /comparativo     → comparativo
     //   /consolidado     → consolidado
-    // route() é o ÚNICO lugar que troca de tela: os botões chamam navigar() e
-    // as funções de fetch existentes continuam sendo as mesmas (nada duplicado).
+    // route() é o ÚNICO lugar que troca de tela: os botões chamam navigar().
     async route() {
       const token = ++this.rotaToken;      // marca esta navegação como a atual
-      const path = location.pathname.replace(/\/+$/, "") || "/";
-      const m = path.match(/^\/view\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i);
+      const path = location.pathname;
+      const m = path.match(/^\/view\/([0-9a-f-]{36})$/i);
 
       this.carregando = true;
       try {
         if (m) {
-          this.view = { name: "viewer", id: m[1] };
+          this.view = { name: "detalhe", id: m[1] };
           const ok = await this.carregarFatura(m[1]);
           if (token !== this.rotaToken) return;             // outra navegação venceu
-          if (!ok) { this.redirecionar("/", "Fatura não encontrada."); return; }
+          if (!ok) { this.navigar("/"); return; }
           this.mostrarTelas("viewer");
+          return;
+        }
+        if (path === "/consolidado") {
+          this.view = { name: "consolidado", id: null };
+          this.mostrarTelas("consolidado");
+          this.cons = null;               // sempre recarrega
+          await this.carregarConsolidado();
           return;
         }
         if (path === "/dicionario") {
@@ -715,26 +720,9 @@ document.addEventListener("alpine:init", () => {
           this.carregarOverridesDic();
           return;
         }
-        if (path === "/comparativo") {
-          this.view = { name: "comparativo", id: null };
-          this.mostrarTelas("comparativo");
-          await this.carregarComparativo();
-          return;
-        }
-        if (path === "/consolidado") {
-          this.view = { name: "consolidado", id: null };
-          this.mostrarTelas("consolidado");
-          this.cons = null;               // sempre recarrega (upload/delete deixam stale)
-          await this.carregarConsolidado();
-          return;
-        }
-        if (path === "/") {
-          this.view = { name: "upload", id: null };
-          this.mostrarTelas("upload");
-          return;
-        }
-        // URL desconhecida (ou /view/<id> fora do padrão UUID)
-        this.redirecionar("/", "Página não encontrada.");
+        // Qualquer outra URL cai na lista inicial.
+        this.view = { name: "lista", id: null };
+        this.mostrarTelas("upload");
       } finally {
         if (token === this.rotaToken) this.carregando = false;
       }

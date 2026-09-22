@@ -44,6 +44,7 @@ from __future__ import annotations
 
 import logging
 import re
+import unicodedata
 from datetime import date
 from decimal import Decimal
 
@@ -57,25 +58,25 @@ logger = logging.getLogger(__name__)
 # --------------------------------------------------------------------------
 
 # "Vencimento: 10/09/2026"
-RE_VENCIMENTO = re.compile(r"Vencimento:\s*(\d{2})/(\d{2})/(\d{4})")
+RE_VENCIMENTO = re.compile(r"Vencimento\s*:\s*(\d{2})/(\d{2})/(\d{4})", re.IGNORECASE)
 
 # "Emissão: 03/09/2026" → fechamento
-RE_EMISSAO = re.compile(r"Emissão:\s*(\d{2})/(\d{2})/(\d{4})")
+RE_EMISSAO = re.compile(r"Emiss[aã]o\s*:\s*(\d{2})/(\d{2})/(\d{4})", re.IGNORECASE)
 
 # "Total desta fatura 1.940,84"
-RE_TOTAL_A_PAGAR = re.compile(r"Total desta fatura\s*([\d.]+,\d{2})", re.IGNORECASE)
+RE_TOTAL_A_PAGAR = re.compile(r"Total\s*desta\s*fatura\s*([\d.]+,\d{2})", re.IGNORECASE)
 
 # "O total da sua fatura é: R$ 9.880,00 10/09/2026 R$ 1.940,84" → pega último
-RE_TOTAL_CTX = re.compile(r"total da sua fatura é\s*:?\s*(.*?)(?:\s+\d{2}/\d{2}/\d{4})", re.IGNORECASE)
+RE_TOTAL_CTX = re.compile(r"total\s*da\s*sua\s*fatura\s*é\s*:?\s*(.*?)(?:\s+\d{2}/\d{2}/\d{4})", re.IGNORECASE)
 
 # "Pagamento mínimo: R$ 194,08"
-RE_PAGAMENTO_MINIMO = re.compile(r"Pagamento mínimo[^R$]*R\$\s*([\d.]+,\d{2})", re.IGNORECASE)
+RE_PAGAMENTO_MINIMO = re.compile(r"Pagamento\s*m[íi]nimo[^R$]*R\$\s*([\d.]+,\d{2})", re.IGNORECASE)
 
 # "Total da fatura anterior 2.111,00"
-RE_FATURA_ANTERIOR = re.compile(r"Total da fatura anterior\s*([\d.]+,\d{2})", re.IGNORECASE)
+RE_FATURA_ANTERIOR = re.compile(r"Total\s*da\s*fatura\s*anterior\s*([\d.]+,\d{2})", re.IGNORECASE)
 
 # "Total de encargos em R$ 115,27" (seção própria, depois de "Limites de crédito")
-RE_TOTAL_ENCARGOS = re.compile(r"Total de encargos em\s*R\$\s*([\d.]+,\d{2})", re.IGNORECASE)
+RE_TOTAL_ENCARGOS = re.compile(r"Total\s*de\s*encargos\s*em\s*R\$\s*([\d.]+,\d{2})", re.IGNORECASE)
 
 # Fallback na p1: "Encargos (Financiamento + moratório) 115,27"
 RE_ENCARGOS_P1 = re.compile(
@@ -85,7 +86,7 @@ RE_ENCARGOS_P1 = re.compile(
 
 # "Pagamento efetuado em 03/08/2026 -2.111,00" → crédito
 RE_PAGAMENTO_EFETUADO = re.compile(
-    r"Pagamento efetuado em\s*(\d{2}/\d{2}/\d{4})\s+[−\-]\s*R?\$?\s*([\d.]+,\d{2})",
+    r"Pagamento\s*efetuado\s*em\s*(\d{2})/(\d{2})/(\d{4})\s+[−\-]\s*R?\$?\s*([\d.]+,\d{2})",
     re.IGNORECASE,
 )
 
@@ -93,7 +94,7 @@ RE_PAGAMENTO_EFETUADO = re.compile(
 RE_CARTAO_ITAU = re.compile(r"(\d{4})\.\w*\.\w*\.(\d{4})")
 
 # Data DD/MM no início de uma linha/coluna
-RE_DATA_INICIO = re.compile(r"^(\d{2})/(\d{2})\s")
+RE_DATA_INICIO = re.compile(r"^(\d{2})/(\d{2})\s*")
 
 # Data DD/MM em qualquer posição
 RE_DATA_DDMM = re.compile(r"(?<!\d)(\d{2})/(\d{2})(?!\d)")
@@ -103,22 +104,26 @@ RE_VALOR = re.compile(r"([\d.]+,\d{2})")
 
 # "03/08 Pagamento via conta -2.111,00" → crédito na mesma linha
 RE_PAGAMENTO_LINHA = re.compile(
-    r"(\d{2})/(\d{2})\s+Pagamento via conta\s*[−\-]\s*([\d.]+,\d{2})",
+    r"(\d{2})/(\d{2})\s*Pagamento\s*via\s*conta\s*[−\-]\s*([\d.]+,\d{2})",
+    re.IGNORECASE,
 )
 
 # Linha só com data "11/08"
 RE_SOMENTE_DATA = re.compile(r"^(\d{2})/(\d{2})$")
 
 # Linhas de categoria/cidade (metadados — ignorar)
+# No PDF novo a categoria gruda no estabelecimento ("saúdeCURITIBA"); \b não
+# casa entre 'é' e 'C', então usamos lookahead de letra maiúscula ou fim.
 RE_CATEGORIA = re.compile(
-    r"^(?:saúde|saude|transporte|supermercado|outros|restaurante|"
-    r"farmacia|farmácia|eletronicos|eletrônicos)\b",
+    r"^(?:sa[uú]de|saude|servi[cç]os|servicos|transporte|supermercado|outros|"
+    r"restaurante|farm[aá]cia|farmacia|eletr[oô]nicos|eletronicos)"
+    r"(?=[A-Z]{2,}|\s|$)",
     re.IGNORECASE,
 )
 
 # Sufixo "categoria CIDADE" colado no fim de uma linha limpa:
 # "LANCHONETE DOIS CORACCU supermercado CURITIBA" → "LANCHONETE DOIS CORACCU"
-# O `\s+` inicial (e não `\s*`) é o que garante que o casamento NUNCA começa no
+# O `\s+` inicial (e não `\s*`) é o que garante que o casamento NUNCA comece no
 # início da descrição — sem isso, "LANCHONETE DOIS CORACCU" seria zerado.
 RE_CATEGORIA_CIDADE_SUFIXO = re.compile(
     r"\s+(?:sa[uú]de|servi[cç]os|servicos|transporte|supermercado|outros|"
@@ -141,6 +146,14 @@ class ParserError(Exception):
 def _normalizar_texto(s: str) -> str:
     """Normaliza U+2212 (−) e U+00A0 (nbsp) → ASCII."""
     return s.replace("\u2212", "-").replace("\xa0", " ")
+
+
+def _fold(s: str) -> str:
+    """Remove acentos, espaços e quebras de linha para matching tolerante."""
+    s = _normalizar_texto(s)
+    s = unicodedata.normalize("NFKD", s)
+    s = "".join(c for c in s if not unicodedata.combining(c))
+    return re.sub(r"\s+", "", s).casefold()
 
 
 def _parse_valor(s: str) -> Decimal | None:
@@ -331,7 +344,7 @@ def _extract_header(pages: list[dict]) -> dict:
     creditos = None
     m = RE_PAGAMENTO_EFETUADO.search(texto_todo)
     if m:
-        creditos = abs(_parse_valor(m.group(2)))
+        creditos = abs(_parse_valor(m.group(4)))
 
     # Fallback: "Pagamento via conta -2.111,00" na secao de lancamentos
     if creditos is None:
@@ -490,7 +503,7 @@ def _extract_transacoes(pages: list[dict], cartao_tag: str,
     idx_lancamentos = None
     for i, page in enumerate(pages):
         texto = " ".join(l["text"] for l in page["lines"])
-        if "Lançamentos: compras e saques" in texto:
+        if "lancamentos:comprasesaques" in _fold(texto):
             idx_lancamentos = i
             break
     if idx_lancamentos is None:
@@ -502,21 +515,47 @@ def _extract_transacoes(pages: list[dict], cartao_tag: str,
 
     data_pendente: date | None = None
     modo_parcelado = False
+    fim_direita = False
+    inicio_lancamentos = False
 
     for line in linhas_zona:
         raw = line["text"].strip()
         if not raw:
             continue
 
-        # Fim da zona de lançamentos ("Limites de crédito" é o verdadeiro fim;
-        # "Total para próximas faturas" é um header secundário que não pára)
-        if re.search(r"Limites de crédito", raw, re.IGNORECASE):
-            return transacoes
+        # A zona de lançamentos útil começa no marcador. No PDF novo, a coluna
+        # direita traz "Pagamentos efetuados" com parcelas FUTURAS antes deste
+        # marcador, então só processamos transações da direita depois dele.
+        if "lancamentos:comprasesaques" in _fold(raw):
+            inicio_lancamentos = True
+
+        # Fim da zona de lançamentos. "Limites de crédito" pode aparecer na
+        # coluna direita ANTES da esquerda terminar (PDF 20260921-075540). Se
+        # estiver só na direita, marcamos o fim da direita e continuamos a
+        # esquerda. Se estiver na esquerda (ou em toda a linha), é o fim real.
+        if "limitesdecredito" in _fold(raw):
+            left_words, right_words = _split_colunas_line(line)
+            if left_words:
+                return transacoes
+            fim_direita = True
+            continue
 
         # "Compras parceladas - próximas faturas": ativar modo_parcelado
-        if "Compras parceladas" in raw:
+        if "comprasparceladas" in _fold(raw):
             modo_parcelado = True
             continue
+
+        # Resumo da coluna esquerda = fim real dos lançamentos atuais.
+        # No PDF novo esse resumo aparece na direita enquanto a esquerda ainda
+        # tem transações, então só paramos quando ele estiver na esquerda.
+        if re.search(r"Total\s*dos\s*lancamentos\s*atuais|Lancamentos\s*no\s*cartao",
+                     _fold(raw), re.IGNORECASE):
+            left_words, _ = _split_colunas_line(line)
+            if left_words:
+                left_text = _normalizar_texto(" ".join(w["text"] for w in left_words)).strip()
+                if re.search(r"Total\s*dos\s*lancamentos\s*atuais|Lancamentos\s*no\s*cartao",
+                             _fold(left_text), re.IGNORECASE):
+                    return transacoes
 
         # Dividir em colunas
         left_words, right_words = _split_colunas_line(line)
@@ -525,9 +564,18 @@ def _extract_transacoes(pages: list[dict], cartao_tag: str,
             if not col_words:
                 continue
 
+            # Direita já acabou no marcador "Limites de crédito"
+            if fim_direita and is_direita:
+                continue
+
             text = _normalizar_texto(" ".join(w["text"] for w in col_words)).strip()
             if not text:
                 continue
+
+            # Antes do início da zona útil, a direita só pode trazer pagamento
+            if is_direita and not inicio_lancamentos:
+                if not re.search(r"Pagamento\s*via\s*conta", text, re.IGNORECASE):
+                    continue
 
             # Zona 2 (após "Compras parceladas - próximas faturas"): a col direita
             # é a tabela de faturas FUTURAS e qualquer linha com token de parcela
@@ -538,9 +586,9 @@ def _extract_transacoes(pages: list[dict], cartao_tag: str,
                 continue
 
             # Ignorar cabeçalhos de coluna
-            if text.startswith("DATA VALOR") or text.startswith("DATA ESTABECE"):
+            if _fold(text).startswith("datavaloremr$") or _fold(text).startswith("dataestabelecimento"):
                 continue
-            if text.startswith("Lançamentos:") or text.lower().startswith("lançamentos:"):
+            if _fold(text).startswith("lancamentos:"):
                 continue
 
             # Ignorar linhas de categoria/cidade
@@ -558,7 +606,7 @@ def _extract_transacoes(pages: list[dict], cartao_tag: str,
                 continue
 
             # Pagamento (crédito)
-            if "Pagamento via conta" in text:
+            if re.search(r"Pagamento\s*via\s*conta", text, re.IGNORECASE):
                 transacoes.extend(_processar_coluna_pagamento(
                     text, cartao_tag, ano_ref, mes_fechamento))
                 data_pendente = None
