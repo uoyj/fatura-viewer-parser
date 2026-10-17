@@ -252,11 +252,6 @@ def _limpar_categoria_cidade(descricao: str) -> str:
     return descricao
 
 
-def _tem_token_parcela(texto: str) -> bool:
-    """True se a coluna traz, além da data inicial, um DD/MM (token de parcela)."""
-    return len(RE_DATA_DDMM.findall(texto)) > 1
-
-
 def _extract_cartao_tag(pages: list[dict]) -> str:
     """Extrai últimos 4 dígitos do cartão da página 1."""
     texto = " ".join(l["text"] for l in pages[0]["lines"])
@@ -515,6 +510,8 @@ def _extract_transacoes(pages: list[dict], cartao_tag: str,
 
     data_pendente: date | None = None
     modo_parcelado = False
+    col_futura: bool | None = None   # True = tabela futura na direita
+    fim_futura = False               # bloco futuro encerrado ("Total para...")
     fim_direita = False
     inicio_lancamentos = False
 
@@ -540,10 +537,23 @@ def _extract_transacoes(pages: list[dict], cartao_tag: str,
             fim_direita = True
             continue
 
-        # "Compras parceladas - próximas faturas": ativar modo_parcelado
+        # "Compras parceladas - próximas faturas": ativar modo_parcelado.
+        # A coluna do header define onde está a tabela de parcelas FUTURAS
+        # (True = direita). Só a coluna futura e seu conteúdo são ignorados;
+        # a outra coluna continua com lançamentos atuais (incluso se carregar
+        # token de parcela, como "08/09 PANVEL*DIGITAL 01/02 33,43").
         if "comprasparceladas" in _fold(raw):
             modo_parcelado = True
+            if col_futura is None:
+                _, right_words = _split_colunas_line(line)
+                col_futura = bool(right_words)
             continue
+
+        # Fim do bloco futuro: "Total para próximas faturas" na coluna futura.
+        if (modo_parcelado and col_futura is not None and not fim_futura):
+            if "totalparaprximasfaturas" in _fold(raw) or "totalparaproximasfaturas" in _fold(raw):
+                fim_futura = True
+                continue
 
         # Resumo da coluna esquerda = fim real dos lançamentos atuais.
         # No PDF novo esse resumo aparece na direita enquanto a esquerda ainda
@@ -577,12 +587,13 @@ def _extract_transacoes(pages: list[dict], cartao_tag: str,
                 if not re.search(r"Pagamento\s*via\s*conta", text, re.IGNORECASE):
                     continue
 
-            # Zona 2 (após "Compras parceladas - próximas faturas"): a col direita
-            # é a tabela de faturas FUTURAS e qualquer linha com token de parcela
-            # NN/MM também é futura (na fatura de 2026-09-18 a tabela vem na col
-            # ESQUERDA, porque a direita é texto). O que sobra na col esquerda é a
-            # continuação dos lançamentos atuais.
-            if modo_parcelado and (is_direita or _tem_token_parcela(text)):
+            # Zona 2 (após "Compras parceladas - próximas faturas"): a coluna
+            # futura (definida pelo header) é a tabela de parcelas FUTURAS e é
+            # ignorada (skip). "Total para próximas faturas" encerra esse bloco.
+            # A outra coluna continua com lançamentos atuais, mesmo que carregue
+            # token NN/MM de parcela (ex: "08/09 PANVEL*DIGITAL 01/02 33,43").
+            if (modo_parcelado and not fim_futura
+                    and col_futura is not None and is_direita == col_futura):
                 continue
 
             # Ignorar cabeçalhos de coluna
