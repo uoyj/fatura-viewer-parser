@@ -107,6 +107,11 @@
         <span class="loading" x-show="enviando">Processando...</span>
       </div>
       <div id="erro-upload" class="erro-box" x-show="uploadErro" x-text="uploadErro"></div>
+      <div id="aviso-upload" class="aviso-box" x-show="uploadAviso">
+        <div x-text="uploadAviso"></div>
+        <a class="aviso-link" @click.prevent="navigar('/view/' + faturaDuplicataId)" href="#"
+           x-show="faturaDuplicataId">Ver fatura já cadastrada</a>
+      </div>
     </form>
   </div>
 </section>

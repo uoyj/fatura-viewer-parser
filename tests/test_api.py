@@ -229,17 +229,32 @@ def test_override_reflete_no_get_e_jsonl_fica_intacto(client):
 
 @slow
 def test_override_delete_e_upload_response(client):
-    """DELETE do override volta à categoria original e o POST também o reflete."""
-    fid = _upload(client)["id"]
+    """
+    DELETE do override volta à categoria original em faturas já salvas,
+    e a resposta do POST também aplica overrides ativos.
+
+    Com dedupe, o segundo upload do mesmo PDF precisa que o primeiro seja
+    removido; usamos a fatura 1 para testar a reversão do override e a fatura 2
+    para testar a resposta do POST.
+    """
+    fid1 = _upload(client)["id"]
     assert client.put(OVERRIDE_URL,
                       json={"categoria": CATEGORIA_OVERRIDE}).status_code == 200
-    assert set(_cats_no_get(client, fid)) == {CATEGORIA_OVERRIDE}
+    assert set(_cats_no_get(client, fid1)) == {CATEGORIA_OVERRIDE}
 
-    # a resposta do POST /faturas também passa pelos overrides
+    # DELETE do override deve reverter a categoria original na fatura salva
+    assert client.delete(OVERRIDE_URL).status_code == 200
+    assert set(_cats_no_get(client, fid1)) == {CATEGORIA_REGRA}
+
+    # Reativa o override e remove a fatura 1 para permitir novo upload do mesmo PDF
+    assert client.put(OVERRIDE_URL,
+                      json={"categoria": CATEGORIA_OVERRIDE}).status_code == 200
+    assert client.delete(f"/api/faturas/{fid1}").status_code == 200
+
+    # A resposta do POST /faturas também passa pelos overrides
     data = _upload(client)
     cats = [t["categoria"] for t in data["transacoes"] if t["descricao"] == DESCRICAO]
     assert cats and set(cats) == {CATEGORIA_OVERRIDE}
 
-    resp = client.delete(OVERRIDE_URL)
-    assert resp.status_code == 200
-    assert set(_cats_no_get(client, fid)) == {CATEGORIA_REGRA}
+    # Limpa o override ao final
+    assert client.delete(OVERRIDE_URL).status_code == 200

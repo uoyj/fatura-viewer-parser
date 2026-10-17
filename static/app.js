@@ -351,6 +351,8 @@ document.addEventListener("alpine:init", () => {
     bancoHint: { texto: "", tom: "" },
     enviando: false,
     uploadErro: "",
+    uploadAviso: "",
+    faturaDuplicataId: null,
 
     // ===== Command palette =====
     cmdkAberto: false,
@@ -756,6 +758,8 @@ document.addEventListener("alpine:init", () => {
       if (form) form.reset();          // limpa o input de arquivo do DOM
       this.enviando = false;
       this.uploadErro = "";
+      this.uploadAviso = "";
+      this.faturaDuplicataId = null;
       // form.reset() limpa o input de arquivo (e o select volta ao placeholder):
       // o estado do arquivo tem que sair junto. O RÓTULO com o nome do PDF anterior
       // permanece — é o mesmo comportamento de antes (o reset só mexe em controles).
@@ -806,6 +810,8 @@ document.addEventListener("alpine:init", () => {
       // Loading
       this.enviando = true;
       this.uploadErro = "";
+      this.uploadAviso = "";
+      this.faturaDuplicataId = null;
 
       const formData = new FormData();
       formData.append("arquivo", arquivo);
@@ -826,6 +832,16 @@ document.addEventListener("alpine:init", () => {
           } catch(e) {
             // JSON mal formado
           }
+        }
+
+        if (resp.status === 409 && data && data.detail) {
+          const detail = data.detail;
+          this.uploadErro = "";
+          const mes = new Date(detail.fechamento + 'T00:00')
+            .toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+          this.uploadAviso = `Esta fatura do ${detail.banco} de ${mes} já foi enviada.`;
+          this.faturaDuplicataId = detail.fatura_id;
+          return;
         }
 
         if (resp.status === 422) {

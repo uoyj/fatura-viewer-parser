@@ -60,6 +60,7 @@ from categorizer import (
 )
 
 from comparativo import calcular_comparativo, calcular_consolidado
+from dedupe import chave_natural, encontrar_duplicata, fingerprint_pdf
 
 logger = logging.getLogger("api")
 
@@ -189,22 +190,23 @@ async def upload_fatura(arquivo: UploadFile = File(...), banco: str = Form(...),
             content={"erro": "Arquivo deve ser PDF (.pdf)"},
         )
 
-    # Salvar upload
-    fatura_id = str(uuid.uuid4())
-    file_path = UPLOADS_DIR / f"{fatura_id}.pdf"
+    # Ler bytes do upload (antes de qualquer I/O de persistência)
     try:
         content = await arquivo.read()
-        file_path.write_bytes(content)
     except Exception as e:
-        logger.exception("Erro salvando upload: %s", e)
+        logger.exception("Erro lendo upload: %s", e)
         return JSONResponse(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            content={"erro": f"Erro salvando arquivo: {e}"},
+            content={"erro": f"Erro lendo arquivo: {e}"},
         )
 
-    # Extract + parse
+    # Extract + parse (de arquivo temporário; dedupe precisa da chave natural)
+    tmp_path = None
     try:
-        extractor_output = extract_text(file_path)
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+            tmp.write(content)
+            tmp_path = Path(tmp.name)
+        extractor_output = extract_text(tmp_path)
         parse_fn = get_parser(banco, versao)  # pode levantar ValueError
         fatura = parse_fn(extractor_output)     # pode levantar ParserError
     except ParserError as e:
@@ -224,6 +226,37 @@ async def upload_fatura(arquivo: UploadFile = File(...), banco: str = Form(...),
         return JSONResponse(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             content={"erro": f"PDF corrompido ou ilegível: {e}"},
+        )
+    finally:
+        if tmp_path:
+            tmp_path.unlink(missing_ok=True)
+
+    # Dedupe: verifica hash e chave natural antes de persistir
+    payload = fatura_para_dict(fatura)
+    fp = fingerprint_pdf(content)
+    chave = chave_natural(payload)
+    duplicata = encontrar_duplicata(fp, chave, _carregar_registros())
+    if duplicata:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "fatura_duplicada",
+                "fatura_id": duplicata["id"],
+                "banco": payload["banco"],
+                "fechamento": payload["fechamento"],
+            },
+        )
+
+    # Salvar upload
+    fatura_id = str(uuid.uuid4())
+    file_path = UPLOADS_DIR / f"{fatura_id}.pdf"
+    try:
+        file_path.write_bytes(content)
+    except Exception as e:
+        logger.exception("Erro salvando upload: %s", e)
+        return JSONResponse(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            content={"erro": f"Erro salvando arquivo: {e}"},
         )
 
     # Aplicar categorização determinística (regras do usuário + overrides globais)
@@ -248,6 +281,7 @@ async def upload_fatura(arquivo: UploadFile = File(...), banco: str = Form(...),
         "criado_em": datetime.now(timezone.utc).isoformat(),
         "banco": payload["banco"],
         "modelo": payload["modelo"],
+        "pdf_hash": fp,
         "payload": payload,
     }
     regras = _carregar_registros()
