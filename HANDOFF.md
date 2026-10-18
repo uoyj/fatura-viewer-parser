@@ -174,8 +174,9 @@ PDF input → extract_text() → Parser (banco/versão) → Fatura → _validate
 || POST | `/api/recategorizar` | Re-aplica regras em todas as faturas |
 || GET | `/api/usuarios` | Lista de nomes ordenada (data/usuarios.json) |
 || POST | `/api/usuarios` | Cria usuário (409 se já existir, case-insensitive) |
+|| PATCH | `/api/usuarios/{nome}` | Renomeia usuário + retaga faturas (409 se conflito; auto-rename = no-op) |
 || DELETE | `/api/usuarios/{nome}` | Deleta usuário + desmarca faturas (404 se inexistente) |
-|| PATCH | `/api/faturas/{id}` | Retag de usuário: `{"usuario": "nome"|null}` |
+|| PATCH | `/api/faturas/{id}` | Retag de usuário: {"usuario": "nome"|null} |
 || GET | `/api/comparativo` | Comparação mês a mês + anomalias |
 || GET | `/api/consolidado` | Histórico + projeção de gastos |
 
@@ -336,9 +337,15 @@ mesmo titular; dependentes têm faturas separadas.
 - **Sem auth**: a API é local (auth: sem — veja Problemas Conhecidos). A tag é
   stateless sobre quem tem acesso.
 - **Criação inline (frontend)**: os selects de usuário (viewer-header e form de
-  upload) têm uma sentinela "＋ Novo usuário…" que abre um input inline
+  upload) têm uma sentinela “＋ Novo usuário…” que abre um input inline
   reaproveitando `.categoria-livre`. Enter confirma (POST; 409 adota o nome
   canônico já existente). Esc / clique-fora cancela sem efeito.
+- **Gestão no Dicionário (frontend)**: card “Usuários” acima das regras.
+  Renomear abre input inline (Enter → PATCH; 409 mantém input aberto); remover
+  (×) confirma com `confirm()` e desvincula faturas (ficam sem tag).
+- **CUIDADO**: a sentinela `__NOVO__` é SÓ um `:value` de `<option>` no frontend
+  — nunca é persistida como `usuario`. O backend valida nomes contra
+  `usuarios.json` (422 se inexistente), defesa em caso de envio acidental.
 - **Sem migração**: faturas antigas sem tag aparecem apenas no filtro "Todos" do
   frontend — não há migração automática de `null`.
 

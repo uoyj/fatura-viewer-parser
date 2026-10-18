@@ -387,7 +387,48 @@
     <div class="dic-msg" id="msg-regras" :class="msgRegras.tipo" x-text="msgRegras.texto"></div>
   </div>
 
-  <!-- Overrides -->
+  <!-- Usuários (gestão: renomear + remover) -->
+  <!-- A criação de usuários é via sentinela no viewer/upload — este card é só
+       gestão. Só UM editor livre por vez (reaproveita editorUsuario). -->
+  <div class="dic-card">
+    <h3>Usuários</h3>
+    <div id="lista-usuarios">
+      <div class="overrides-vazio" x-show="!usuarios.length && !usuariosErro">Nenhum usuário ainda.</div>
+      <div class="overrides-vazio" x-show="usuariosErro" x-text="usuariosErro"></div>
+      <table class="dic-tabela" x-show="usuarios.length">
+        <thead><tr><th>Nome</th><th style="width:144px"></th></tr></thead>
+        <tbody>
+          <template x-for="u in usuarios" :key="u">
+            <tr>
+              <td class="desc">
+                <template x-if="!editorUsuario || editorUsuario.contexto !== 'dic' || editorUsuario.alvo !== u">
+                  <span x-text="u"></span>
+                </template>
+                <template x-if="editorUsuario && editorUsuario.contexto === 'dic' && editorUsuario.alvo === u">
+                  <input type="text" class="usuario-livre categoria-livre"
+                         placeholder="Novo nome…"
+                         aria-label="Renomear usuário (Enter confirma, Esc cancela)"
+                         x-model="editorUsuario.valor"
+                         @keydown.enter.prevent="confirmarRenameDic($event, u)"
+                         @keydown.escape.prevent="fecharEditorUsuario()"
+                         @mousedown.outside="fecharEditorUsuario()">
+                </template>
+              </td>
+              <td style="text-align:right;white-space:nowrap">
+                <button type="button" class="btn-converter-regra"
+                        title="Renomear usuário" aria-label="Renomear usuário"
+                        @click="abrirEditorUsuario('dic', u, u)">↙</button>
+                <button type="button" class="btn-remover-regra"
+                        title="Remover usuário" :aria-label="`Remover usuário ${u}`"
+                        @click="deletarUsuarioDic(u)">×</button>
+              </td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+    <div class="dic-msg" id="msg-usuarios" :class="msgUsuarios.tipo" x-text="msgUsuarios.texto"></div>
+  </div>
   <div class="dic-card">
     <h3>Ensino manual (overrides)</h3>
     <div id="lista-overrides">

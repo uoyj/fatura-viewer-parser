@@ -22,6 +22,7 @@ Endpoints:
   POST   /api/recategorizar    — re-aplica regras+overrides em todas as faturas
   GET    /api/usuarios         — lista de nomes (data/usuarios.json), ordenada
   POST   /api/usuarios         — cria usuário (409 se já existir, case-insensitive)
+  PATCH  /api/usuarios/{nome}  — renomeia usuário + retaga faturas (409 se conflito)
   DELETE /api/usuarios/{nome}  — deleta + desmarca (usuario=null) faturas taggeadas
   PATCH  /api/faturas/{id}     — retag de usuário: {"usuario": "nome"|null}
 
@@ -654,6 +655,70 @@ async def delete_usuario(nome: str):
     usuarios = [u for u in usuarios if _normalizar_usuario(u) != norm]
     _salvar_usuarios(usuarios, USUARIOS_PATH)
     return {"ok": True, "nome": alvo, "desmarcadas": alteradas}
+
+
+@app.patch("/api/usuarios/{nome}")
+async def patch_usuario(nome: str, request: Request):
+    """
+    Renomear um usuário (tag por fatura). Body: {"novo_nome": "..."}.
+    - 404 se {nome} não existir (comparação normalizada);
+    - 422 se novo_nome vazio;
+    - 409 se novo_nome já existir (case-insensitive, mesmo critério do POST),
+      EXCETO auto-rename (mesmo nome canônico) → no-op success (retag=0).
+
+    ATÔMICO: valida tudo antes de persistir — renomeia data/usuarios.json E
+    retaga todas as faturas usuario==nome → novo_nome em uma única gravação
+    do JSONL. Nunca deixa faturas apontando para nome inexistente.
+    Retorna {"usuario": <novo_nome_canonico>, "retag": <n de faturas>}.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        return _erro422("JSON inválido no corpo da requisição")
+    if not isinstance(body, dict):
+        return _erro422("Corpo deve ser um objeto JSON")
+
+    novo_nome = body.get("novo_nome")
+    if not isinstance(novo_nome, str) or not novo_nome.strip():
+        return _erro422("Campo 'novo_nome' é obrigatório e deve ser string não-vazia")
+    novo_nome = novo_nome.strip()
+
+    # 1) Validar tudo ANTES de tocar em qualquer arquivo (atomicidade)
+    usuarios = _carregar_usuarios(USUARIOS_PATH)
+    norm_atual = _normalizar_usuario(nome)
+    alvo_atual = next((u for u in usuarios if _normalizar_usuario(u) == norm_atual), None)
+    if alvo_atual is None:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+
+    norm_novo = _normalizar_usuario(novo_nome)
+    alvo_novo = next((u for u in usuarios if _normalizar_usuario(u) == norm_novo), None)
+    # Auto-rename (mesmo nome canônico) → no-op; evita 409 frustrante em
+    # clientes que reenviam o próprio nome. Documentado no HANDOFF.
+    if alvo_novo is not None and alvo_novo != alvo_atual:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Usuário já existe: {alvo_novo}",
+        )
+
+    # 2) Persistir ATÔMICO: retag no JSONL primeiro, depois a lista de nomes.
+    # Se o JSONL gravar e a lista falhar, o nome novo já existe no JSONL (e a
+    # lista é re-criada do seed vazio na próxima leitura — consistente).
+    # nome_canonico: preferimos o nome já cadastrado com a mesma grafia
+    # (case-insensitive) — evita duplicatas como "Jhonatan" + "jhonatan".
+    nome_canonico = alvo_novo if alvo_novo is not None else novo_nome
+    regs = _carregar_registros()
+    retag = 0
+    for reg in regs:
+        if reg.get("usuario") is not None and _normalizar_usuario(reg["usuario"]) == norm_atual:
+            reg["usuario"] = nome_canonico
+            retag += 1
+    if retag:
+        _salvar_registros(regs)
+
+    usuarios = [nome_canonico if _normalizar_usuario(u) == norm_atual else u for u in usuarios]
+    _salvar_usuarios(usuarios, USUARIOS_PATH)
+
+    return {"usuario": nome_canonico, "retag": retag}
 
 
 @app.patch("/api/faturas/{fatura_id}")

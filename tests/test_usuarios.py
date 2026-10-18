@@ -6,6 +6,8 @@ Cobre:
   (comparação normalizada: strip + casefold)
 - 404 no DELETE de usuário inexistente
 - DELETE desmarca (usuario=null) todas as faturas vinculadas
+- PATCH /api/usuarios/{nome} renomeia + retaga atomicamente (200/404/409/422);
+  rename para o MESMO nome → no-op success (retag=0), não 409
 - PATCH /api/faturas/{id} retag válido / 422 com nome inexistente / null limpa
 - POST /api/faturas (multipart) com e sem usuario; GET lista e detail expõem usuario
 - Isolação: tudo em tmp_path via monkeypatch — NUNCA toca data/ real
@@ -318,3 +320,102 @@ def test_upload_usuario_inexistente_422(client, isolado):
     # nada persistido
     assert not (isolado / "faturas.jsonl").exists()
     assert not list((isolado / "uploads").glob("*.pdf"))
+
+
+# ---------------------------------------------------------------------------
+# 5. Renomear usuário (PATCH /api/usuarios/{nome})
+# ---------------------------------------------------------------------------
+# Decisão: renomear para o MESMO nome canônico → no-op SUCCESS (retag=0).
+# Não 409: o próprio nome não é um "conflito", é um re-submit que deve ser
+# idempotente (clientes reenviam o nome atual). Documentado no HANDOFF.
+
+def test_patch_usuario_renomeia_e_retaga(client, isolado):
+    """Rename retaga todas as faturas e atualiza usuarios.json atomicamente."""
+    client.post("/api/usuarios", json={"nome": "Jhonatan"})
+    ids = _gravar_jsonl(isolado / "faturas.jsonl", [
+        _payload([_transacao("COISA A")]),
+        _payload([_transacao("COISA B")]),
+    ], usuario="Jhonatan")
+    fid = ids[0]
+
+    # Renomeia Jhonatan → Júlia
+    resp = client.patch("/api/usuarios/" + quote("Jhonatan"), json={"novo_nome": "Júlia"})
+    assert resp.status_code == 200
+    assert resp.json() == {"usuario": "Júlia", "retag": 2}
+
+    # usuarios.json reflete o novo nome (e não tem Jhonatan)
+    assert client.get("/api/usuarios").json() == {"usuarios": ["Júlia"]}
+
+    # GET /faturas expõe a nova tag em TODAS as faturas atreladas
+    faturas = client.get("/api/faturas").json()
+    assert faturas[0]["usuario"] == "Júlia"
+    assert faturas[1]["usuario"] == "Júlia"
+
+    # GET /faturas/{id} também
+    assert client.get(f"/api/faturas/{fid}").json()["usuario"] == "Júlia"
+
+    # JSONL no disco retagado atomicamente
+    regs = [json.loads(l) for l in (isolado / "faturas.jsonl").read_text().splitlines()]
+    assert all(reg["usuario"] == "Júlia" for reg in regs)
+
+
+def test_patch_usuario_404(client, isolado):
+    """PATCH de usuário inexistente → 404, nada alterado."""
+    client.post("/api/usuarios", json={"nome": "Jhonatan"})
+    resp = client.patch("/api/usuarios/" + quote("NaoExiste"), json={"novo_nome": "X"})
+    assert resp.status_code == 404
+    assert client.get("/api/usuarios").json() == {"usuarios": ["Jhonatan"]}
+
+
+def test_patch_usuario_409_confling(client, isolado):
+    """Rename para nome já existente (outro) → 409, nada alterado."""
+    client.post("/api/usuarios", json={"nome": "Jhonatan"})
+    client.post("/api/usuarios", json={"nome": "Mariana"})
+    resp = client.patch("/api/usuarios/" + quote("Jhonatan"), json={"novo_nome": "Mariana"})
+    assert resp.status_code == 409
+    # NADA mudou: Jhonatan e Mariana continuam como estavam
+    assert client.get("/api/usuarios").json() == {"usuarios": ["Jhonatan", "Mariana"]}
+    # case-insensitive também é conflito
+    resp = client.patch("/api/usuarios/" + quote("Jhonatan"), json={"novo_nome": " mariana "})
+    assert resp.status_code == 409
+
+
+def test_patch_usuario_422_nome_vazio(client, isolado):
+    """novo_nome vazio → 422, nada alterado."""
+    client.post("/api/usuarios", json={"nome": "Jhonatan"})
+    resp = client.patch("/api/usuarios/" + quote("Jhonatan"), json={"novo_nome": "   "})
+    assert resp.status_code == 422
+    assert "erro" in resp.json()
+    assert client.get("/api/usuarios").json() == {"usuarios": ["Jhonatan"]}
+
+
+def test_patch_usuario_mesmo_nome_noop(client, isolado):
+    """Rename para o MESMO nome canônico → no-op success (retag=0), não 409."""
+    client.post("/api/usuarios", json={"nome": "Jhonatan"})
+    # "Jhonatan" (mesmo nome exato)
+    resp = client.patch("/api/usuarios/" + quote("Jhonatan"), json={"novo_nome": "Jhonatan"})
+    assert resp.status_code == 200
+    assert resp.json() == {"usuario": "Jhonatan", "retag": 0}
+    # case-insensitive: "JHONATAN" caso-canônico já existe → mesmo nome
+    resp = client.patch("/api/usuarios/" + quote("Jhonatan"), json={"novo_nome": "  JHONATAN  "})
+    assert resp.status_code == 200
+    assert resp.json()["retag"] == 0
+    assert client.get("/api/usuarios").json() == {"usuarios": ["Jhonatan"]}
+
+
+def test_patch_usuario_atomico_se_novo_nome_invalido(client, isolado):
+    """Em caso de 409/422/404, usuarios.json e JSONL permanecem inalterados."""
+    client.post("/api/usuarios", json={"nome": "Jhonatan"})
+    client.post("/api/usuarios", json={"nome": "Mariana"})
+    _gravar_jsonl(isolado / "faturas.jsonl", [
+        _payload([_transacao("COISA")]),
+    ], usuario="Jhonatan")
+    jsonl_antes = (isolado / "faturas.jsonl").read_text()
+    usuarios_antes = client.get("/api/usuarios").json()
+
+    # tenta rename conflitante → 409
+    client.patch("/api/usuarios/" + quote("Jhonatan"), json={"novo_nome": "Mariana"})
+
+    # nada mudou (atomicidade)
+    assert client.get("/api/usuarios").json() == usuarios_antes
+    assert (isolado / "faturas.jsonl").read_text() == jsonl_antes

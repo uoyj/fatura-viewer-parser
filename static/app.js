@@ -146,7 +146,14 @@ function normalizarDescricao(s) {
     .toUpperCase();
 }
 
-// ===== API calls (inalterado) =====
+// Normaliza nome de usuário para comparação/dedup: trim + toLowerCase.
+// Espelha _normalizar_usuario do backend (strip + casefold). JS não tem
+// casefold; toLowerCase é equivalente para nomes latin1/acentuados nesse caso.
+function _normalizarUsuario(nome) {
+  return (nome || "").trim().toLowerCase();
+}
+
+// ===== Helpers de API =====
 async function apiGET(url) {
   const resp = await fetch(url);
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
@@ -373,6 +380,8 @@ document.addEventListener("alpine:init", () => {
     msgRegras: { texto: "", tipo: "" },
     msgOverrides: { texto: "", tipo: "" },
     msgRecat: { texto: "", tipo: "" },
+    msgUsuarios: { texto: "", tipo: "" },
+    usuariosErro: "",
     recategorizando: false,
 
     // ===== Comparativo / Consolidado =====
@@ -1187,8 +1196,10 @@ document.addEventListener("alpine:init", () => {
       try {
         const dados = await apiGET("/api/usuarios");
         this.usuarios = dados.usuarios || [];
+        this.usuariosErro = "";
       } catch (e) {
         this.usuarios = [];
+        this.usuariosErro = e.message;
         console.warn("Não foi possível carregar /usuarios:", e.message);
       }
     },
@@ -1226,10 +1237,12 @@ document.addEventListener("alpine:init", () => {
     // ===== Editor livre de usuário (sentinela "＋ Novo usuário…") =====
     // O select dá lugar a <input class="usuario-livre categoria-livre"> (x-if),
     // reaproveitando o estilo canônico do editor de categoria.
-    // editorUsuario = { contexto: "viewer"|"upload", valor, anterior }
-    abrirEditorUsuario(contexto, anterior) {
+    // editorUsuario = { contexto, valor, anterior, alvo? }
+    //  - contexto "viewer"/"upload": alvo indefinido (criação via sentinela)
+    //  - contexto "dic": alvo = nome do usuário sendo renomeado
+    abrirEditorUsuario(contexto, anterior, alvo) {
       this.fecharEditorUsuario();   // só um editor por vez
-      this.editorUsuario = { contexto, valor: "", anterior };
+      this.editorUsuario = { contexto, valor: "", anterior, alvo: alvo || null };
       this.$nextTick(() => {
         const el = document.querySelector("input.usuario-livre");
         if (el) el.focus();
@@ -1661,6 +1674,67 @@ document.addEventListener("alpine:init", () => {
         this.mostrarMsgDic("msgRecat", `Falha ao recategorizar: ${e.message}`, "erro");
       } finally {
         this.recategorizando = false;
+      }
+    },
+
+    // --- Gestão de usuários no Dicionário (renomear + remover) ---
+    // A criação de usuário é via sentinela no viewer/upload (ver acima). Aqui
+    // só tem gestão sobre usuários já existentes.
+
+    async confirmarRenameDic(e, alvo) {
+      // alvo = nome atual (já existente em usuarios.json). Confirma via PATCH.
+      // 409 (conflito com outro) → alerta e mantém input aberto.
+      // Sucesso → recarrega usuarios + faturas e ajusta a tag da fatura aberta.
+      const novo = (this.editorUsuario && this.editorUsuario.valor || "").trim();
+      if (!novo) {
+        alert("Nome vazio: não renomeado.");
+        return;
+      }
+      try {
+        const resp = await apiFetch(`/api/usuarios/${encodeURIComponent(alvo)}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ novo_nome: novo }),
+        });
+        // retag = número de faturas migradas para o novo nome
+        await this.carregarUsuarios();
+        await this.carregarFaturas();                 // palette + selects atualizam
+        // Se a fatura aberta tinha esta tag, reflete o novo nome sem reload
+        if (this.fatura && this.fatura.usuario &&
+            _normalizarUsuario(this.fatura.usuario) === _normalizarUsuario(alvo)) {
+          this.fatura.usuario = (resp && resp.usuario) || novo;
+        }
+        this.fecharEditorUsuario();
+        this.mostrarMsgDic("msgUsuarios",
+          `Usuário renomeado para “${resp && resp.usuario || novo}” (${resp ? resp.retag : 0} faturas).`,
+          "ok");
+      } catch (err) {
+        // 409 → mantém input aberto (não fecha editor); 404/422/500 → erro visível
+        if (err.message.includes("409") || err.message.toLowerCase().includes("já existe")) {
+          alert(`Já existe um usuário com esse nome: ${novo}.`);
+        } else {
+          alert(`Não foi possível renomear: ${err.message}`);
+        }
+        this.mostrarMsgDic("msgUsuarios", `Renomear falhou: ${err.message}`, "erro");
+      }
+    },
+
+    async deletarUsuarioDic(nome) {
+      if (!confirm(`Excluir o usuário “${nome}”? As faturas vinculadas ficarão SEM usuário.`)) return;
+      try {
+        const resp = await apiDELETE(`/api/usuarios/${encodeURIComponent(nome)}`);
+        await this.carregarUsuarios();
+        await this.carregarFaturas();
+        // Se a fatura aberta tinha esta tag, limpa a tag no viewer sem reload
+        if (this.fatura && this.fatura.usuario &&
+            _normalizarUsuario(this.fatura.usuario) === _normalizarUsuario(nome)) {
+          this.fatura.usuario = "";
+        }
+        this.mostrarMsgDic("msgUsuarios",
+          `Usuário removido. ${resp && resp.desmarcadas ? resp.desmarcadas + " faturas desvinculadas." : ""}`,
+          "ok");
+      } catch (err) {
+        this.mostrarMsgDic("msgUsuarios", `Não foi possível remover: ${err.message}`, "erro");
       }
     },
 
