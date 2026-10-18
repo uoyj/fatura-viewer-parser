@@ -84,6 +84,22 @@ FACTS = {
             "nuuvem *N": (2, 6),
         },
     },
+    "c": {
+        "pdf": "Fatura_Itau_20261011-183059.pdf",
+        "fixture": "itau_2026_10_11.expected.json",
+        "fechamento": "2026-10-03",
+        "vencimento": "2026-10-13",
+        "total_a_pagar": "1251.89",
+        "pagamento_minimo": "125.19",
+        "saldo_anterior": Decimal("1940.84"),
+        "creditos": Decimal("1940.84"),
+        "debitos": Decimal("1251.89"),
+        "encargos": Decimal("0"),
+        "cartao": "3620",
+        "parcelas": {
+            "PANVEL*DIGITAL": (1, 2),
+        },
+    },
 }
 
 

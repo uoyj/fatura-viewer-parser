@@ -20,6 +20,10 @@ Endpoints:
   PUT    /api/recorrentes/{desc}    — marca descrição como recorrente (flag global)
   DELETE /api/recorrentes/{desc}    — desmarca (404 se não estiver marcada)
   POST   /api/recategorizar    — re-aplica regras+overrides em todas as faturas
+  GET    /api/usuarios         — lista de nomes (data/usuarios.json), ordenada
+  POST   /api/usuarios         — cria usuário (409 se já existir, case-insensitive)
+  DELETE /api/usuarios/{nome}  — deleta + desmarca (usuario=null) faturas taggeadas
+  PATCH  /api/faturas/{id}     — retag de usuário: {"usuario": "nome"|null}
 
 Run:
   uvicorn api:app --reload
@@ -73,6 +77,7 @@ JSONL_PATH = DATA_DIR / "faturas.jsonl"
 CATEGORIAS_PATH = DATA_DIR / "categorias.json"
 OVERRIDES_PATH = DATA_DIR / "overrides.json"
 RECORRENTES_PATH = DATA_DIR / "recorrentes.json"
+USUARIOS_PATH = DATA_DIR / "usuarios.json"
 
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -104,6 +109,67 @@ def _encontrar_registro(fatura_id: str) -> dict | None:
         if reg["id"] == fatura_id:
             return reg
     return None
+
+
+# ---------------------------------------------------------------------------
+# Usuários (tags por fatura — nível fatura, não cartão)
+# ---------------------------------------------------------------------------
+# data/usuarios.json: lista JSON de nomes (["nome", ...]), semeada vazia quando
+# ausente — MESMO padrão de categorias.json (arquivo é a fonte da verdade após
+# a primeira criação). Não é autenticação: apenas uma tag opcional por fatura.
+_SEED_USUARIOS: list[str] = []
+
+
+def _normalizar_usuario(nome: str) -> str:
+    """Strip + casefold — usado para comparação/dedup de nomes de usuário."""
+    return (nome or "").strip().casefold()
+
+
+def _escrever_json_usuarios(path: Path, data) -> None:
+    """Grava JSON em data/usuarios.json (cria diretório pai)."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+        f.write("\n")
+
+
+def _ler_json_usuarios(path: Path) -> list | None:
+    """Lê usuarios.json. Retorna None se ausente, levanta ValueError se corrompido."""
+    path = Path(path)
+    if not path.exists():
+        return None
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"{path} contém JSON inválido: {e}") from e
+    except OSError as e:
+        raise ValueError(f"Erro lendo {path}: {e}") from e
+    return data
+
+
+def _carregar_usuarios(path: Path | str | None = None) -> list[str]:
+    """
+    Carrega a lista de usuários de data/usuarios.json.
+
+    Se o arquivo não existir, cria-o com [] (seed vazio — MESMO padrão de
+    categorias.json). Depois disso, o arquivo é a fonte da verdade.
+    """
+    path = USUARIOS_PATH if path is None else Path(path)
+    data = _ler_json_usuarios(path)
+    if data is None:
+        _escrever_json_usuarios(path, list(_SEED_USUARIOS))
+        return list(_SEED_USUARIOS)
+    if not isinstance(data, list) or not all(isinstance(x, str) for x in data):
+        raise ValueError(f"{path} deve conter uma lista JSON de nomes (strings)")
+    return list(data)
+
+
+def _salvar_usuarios(usuarios: list[str], path: Path | str | None = None) -> None:
+    """Grava a lista de nomes em data/usuarios.json."""
+    path = USUARIOS_PATH if path is None else Path(path)
+    _escrever_json_usuarios(path, list(usuarios))
 
 
 def _erro422(mensagem: str) -> JSONResponse:
@@ -182,7 +248,7 @@ async def consolidado():
     return calcular_consolidado(_carregar_registros(), recorrentes)
 
 @app.post("/api/faturas")
-async def upload_fatura(arquivo: UploadFile = File(...), banco: str = Form(...), versao: str = "latest"):
+async def upload_fatura(arquivo: UploadFile = File(...), banco: str = Form(...), versao: str = "latest", usuario: str = Form(None)):
     filename = arquivo.filename or ""
     if not filename.lower().endswith(".pdf"):
         return JSONResponse(
@@ -230,6 +296,17 @@ async def upload_fatura(arquivo: UploadFile = File(...), banco: str = Form(...),
     finally:
         if tmp_path:
             tmp_path.unlink(missing_ok=True)
+
+    # Usuario (tag por fatura, opcional) — validado ANTES de tocar o disco:
+    # ausente/vazio → null; informado e inexistente → 422 (sem gravar PDF).
+    if usuario and usuario.strip():
+        usuarios = _carregar_usuarios(USUARIOS_PATH)
+        norm = _normalizar_usuario(usuario)
+        if not any(_normalizar_usuario(u) == norm for u in usuarios):
+            return _erro422(f"Usuário inexistente: {usuario.strip()}")
+        alvo = next(u for u in usuarios if _normalizar_usuario(u) == norm)
+    else:
+        alvo = None
 
     # Dedupe: verifica hash e chave natural antes de persistir
     payload = fatura_para_dict(fatura)
@@ -282,6 +359,7 @@ async def upload_fatura(arquivo: UploadFile = File(...), banco: str = Form(...),
         "banco": payload["banco"],
         "modelo": payload["modelo"],
         "pdf_hash": fp,
+        "usuario": alvo,
         "payload": payload,
     }
     regras = _carregar_registros()
@@ -290,6 +368,7 @@ async def upload_fatura(arquivo: UploadFile = File(...), banco: str = Form(...),
 
     # Resposta: overrides aplicados na leitura (cópia — o JSONL guarda o parse)
     resposta = dict(payload, transacoes=[dict(t) for t in payload["transacoes"]])
+    resposta["usuario"] = alvo
     return aplicar_overrides(resposta, overrides_em_uso)
 
 
@@ -304,6 +383,7 @@ async def listar_faturas():
             "modelo": p["modelo"],
             "fechamento": p["fechamento"],
             "total_a_pagar": p["total_a_pagar"],
+            "usuario": reg.get("usuario"),
         })
     # Mais recentes primeiro
     faturas.reverse()
@@ -319,7 +399,10 @@ async def get_fatura(fatura_id: str):
     # POST /recategorizar. Lidos 1x por request e SEMPRE pelo path da API
     # (OVERRIDES_PATH deriva de DATA_DIR); _com_ids já devolve cópia, então o
     # payload persistido não é tocado.
-    return aplicar_overrides(_com_ids(reg["payload"]), carregar_overrides(OVERRIDES_PATH))
+    payload = aplicar_overrides(_com_ids(reg["payload"]), carregar_overrides(OVERRIDES_PATH))
+    payload["id"] = reg["id"]
+    payload["usuario"] = reg.get("usuario")
+    return payload
 
 
 @app.delete("/api/faturas/{fatura_id}")
@@ -503,6 +586,122 @@ async def delete_recorrente(descricao: str):
     del recorrentes[chave]
     salvar_recorrentes(recorrentes, RECORRENTES_PATH)
     return {"ok": True, "chave": chave}
+
+
+# ---------------------------------------------------------------------------
+# Usuários (tag por fatura — nível fatura, não cartão)
+# ---------------------------------------------------------------------------
+# Modelo: 1 usuário por FATURA. Os 3 cartões da Sofisa são do mesmo titular;
+# dependentes têm faturas separadas. A tag é um campo opcional top-level no
+# registro JSONL (junto de id/criado_em/banco), NÃO entra no payload parseado
+# nem na chave natural de dedupe (mesma fatura = mesma fatura). Sem auth:
+# retag é um PATCH stateless por quem tem acesso local à API.
+@app.get("/api/usuarios")
+async def get_usuarios():
+    """Lista de nomes de usuário, ordenada. Cria data/usuarios.json (vazio) se ausente."""
+    usuarios = _carregar_usuarios(USUARIOS_PATH)
+    return {"usuarios": sorted(usuarios)}
+
+
+@app.post("/api/usuarios")
+async def post_usuario(request: Request):
+    """
+    Cria um usuário. Body: {"nome": "X"}.
+    409 se já existir (comparação normalizada: strip + casefold).
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        return _erro422("JSON inválido no corpo da requisição")
+    nome = body.get("nome") if isinstance(body, dict) else None
+    if not isinstance(nome, str) or not nome.strip():
+        return _erro422("Campo 'nome' é obrigatório e deve ser string não-vazia")
+
+    usuarios = _carregar_usuarios(USUARIOS_PATH)
+    norm = _normalizar_usuario(nome)
+    if any(_normalizar_usuario(u) == norm for u in usuarios):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Usuário já existe: {nome.strip()}",
+        )
+    usuarios.append(nome.strip())
+    _salvar_usuarios(usuarios, USUARIOS_PATH)
+    return {"ok": True, "nome": nome.strip()}
+
+
+@app.delete("/api/usuarios/{nome}")
+async def delete_usuario(nome: str):
+    """
+    Deleta um usuário. 404 se não existir (comparação normalizada).
+    Ao deletar, DESMARCA (usuario=null) todas as faturas com essa tag.
+    """
+    usuarios = _carregar_usuarios(USUARIOS_PATH)
+    norm = _normalizar_usuario(nome)
+    alvo = next((u for u in usuarios if _normalizar_usuario(u) == norm), None)
+    if alvo is None:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+
+    # Desmarcar todas as faturas com essa tag
+    regs = _carregar_registros()
+    alteradas = False
+    for reg in regs:
+        if reg.get("usuario") is not None and _normalizar_usuario(reg["usuario"]) == norm:
+            reg["usuario"] = None
+            alteradas = True
+    if alteradas:
+        _salvar_registros(regs)
+
+    usuarios = [u for u in usuarios if _normalizar_usuario(u) != norm]
+    _salvar_usuarios(usuarios, USUARIOS_PATH)
+    return {"ok": True, "nome": alvo, "desmarcadas": alteradas}
+
+
+@app.patch("/api/faturas/{fatura_id}")
+async def patch_fatura(fatura_id: str, request: Request):
+    """
+    Retag de usuário numa fatura existente. Body: {"usuario": "nome" | null}.
+    - nome inexistente em usuarios.json → 422
+    - null limpa a tag (usuario=null)
+    - sem o campo no body, a tag é preservada (PATCH parcial)
+    """
+    reg = _encontrar_registro(fatura_id)
+    if reg is None:
+        raise HTTPException(status_code=404, detail="Fatura não encontrada")
+
+    try:
+        body = await request.json()
+    except Exception:
+        return _erro422("JSON inválido no corpo da requisição")
+    if not isinstance(body, dict):
+        return _erro422("Corpo deve ser um objeto JSON")
+
+    if "usuario" in body:
+        valor = body["usuario"]
+        if valor is None:
+            reg["usuario"] = None
+        elif isinstance(valor, str) and valor.strip():
+            usuarios = _carregar_usuarios(USUARIOS_PATH)
+            norm = _normalizar_usuario(valor)
+            if not any(_normalizar_usuario(u) == norm for u in usuarios):
+                return _erro422(f"Usuário inexistente: {valor.strip()}")
+            reg["usuario"] = valor.strip()
+            # Preserva o registro canônico do usuário já cadastrado
+            alvo = next(u for u in usuarios if _normalizar_usuario(u) == norm)
+            reg["usuario"] = alvo
+        else:
+            return _erro422("Campo 'usuario' deve ser string não-vazia ou null")
+
+        # Reescrever o JSONL substituindo o registro pelo id correspondente
+        regs = _carregar_registros()
+        for i, r in enumerate(regs):
+            if r["id"] == reg["id"]:
+                regs[i] = reg
+                break
+        _salvar_registros(regs)
+        return {"ok": True, "id": fatura_id, "usuario": reg["usuario"]}
+
+    # PATCH sem o campo usuario: nada a alterar, retorna o estado atual
+    return {"ok": True, "id": fatura_id, "usuario": reg.get("usuario")}
 
 
 @app.post("/api/recategorizar")

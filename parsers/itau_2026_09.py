@@ -23,9 +23,11 @@ Layout do Itaú (bem mais irregular que Sofisa/Nubank):
   na p2 e termina na p3). Termina em "Limites de crédito".
 - A linha "Compras parceladas - próximas faturas" separa duas zonas:
   - Zona 1 (antes): transações atuais, col L e col R incluídas.
-  - Zona 2 (depois): a col R é a tabela de parcelas FUTURAS (ignore); qualquer
-    linha que carregue um token de parcela NN/MM também é futura (ignore) —
-    a col L restante é a continuação dos lançamentos atuais (inclua).
+  - Zona 2 (depois): a coluna onde o HEADER aparece é a tabela de parcelas
+    FUTURAS (ignore). "Total para próximas faturas" nessa mesma coluna encerra
+    o bloco futuro. A outra coluna é continuação dos lançamentos atuais e
+    PODE carregar token NN/MM de parcela legítica (ex:
+    "08/09 PANVEL*DIGITAL 01/02 33,43") — não é descartada.
 - ENCARGOS (juros/IOF do rotativo) são um campo próprio do header e ficam numa
   seção separada ("Encargos cobrados nesta fatura", depois de "Limites de
   crédito"), fora da tabela de lançamentos: NÃO entram na soma das transações.

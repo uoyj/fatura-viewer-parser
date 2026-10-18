@@ -100,6 +100,29 @@
             </template>
           </select>
         </div>
+        <div style="flex: 1; min-width: 140px;">
+          <!-- FRONT 4: usuário (opcional) tag por fatura. Default vazio.
+               Só envia se setado. SENTINELA "＋ Novo usuário…" abre editor inline. -->
+          <template x-if="!editorUsuario || editorUsuario.contexto !== 'upload'">
+            <select id="select-usuario" class="input-select"
+                    @change="usuarioUploadSentinela($event)">
+              <option value="" :selected="!usuarioUpload" disabled>Usuário (opcional)</option>
+              <template x-for="u in usuarios" :key="u">
+                <option :value="u" :selected="u === usuarioUpload" x-text="u"></option>
+              </template>
+              <option :value="SENTINELA_NOVO_USUARIO" :selected="false">＋ Novo usuário…</option>
+            </select>
+          </template>
+          <template x-if="editorUsuario && editorUsuario.contexto === 'upload'">
+            <input type="text" class="usuario-livre categoria-livre"
+                   placeholder="Novo usuário…"
+                   aria-label="Novo usuário (Enter confirma, Esc cancela)"
+                   x-model="editorUsuario.valor"
+                   @keydown.enter.prevent="confirmarUsuario()"
+                   @keydown.escape.prevent="fecharEditorUsuario()"
+                   @mousedown.outside="fecharEditorUsuario()">
+          </template>
+        </div>
         <div id="banco-hint" :class="bancoHint.tom" x-text="bancoHint.texto"></div>
       </div>
       <button type="submit" class="btn-enviar" id="btn-enviar" :disabled="enviando">Enviar</button>
@@ -121,6 +144,31 @@
   <section id="sec-resumo">
     <div class="viewer-header">
       <h2 id="viewer-title">Visualização da Fatura</h2>
+      <!-- FRONT 4 (corrigido): controle de usuário SEMPRE visível no viewer-header.
+           - Sem x-show: faturas sem tag têm acesso ao select (não era caso "— Sem usuário")
+           - x-model no lugar de :value/:selected (bind só roda depois que as options existem)
+           - option value="" NÃO é disabled: permite remover a tag
+           - SENTINELA "＋ Novo usuário…" troca o select pelo editor inline -->
+      <template x-if="!editorUsuario || editorUsuario.contexto !== 'viewer'">
+        <select class="badge badge-usuario-select"
+                @change="retagUsuario($event)"
+                aria-label="Usuário da fatura">
+          <option value="" :selected="!fatura.usuario">— Sem usuário</option>
+          <template x-for="u in usuarios" :key="u">
+            <option :value="u" :selected="u === fatura.usuario" x-text="u"></option>
+          </template>
+          <option :value="SENTINELA_NOVO_USUARIO" :selected="false">＋ Novo usuário…</option>
+        </select>
+      </template>
+      <template x-if="editorUsuario && editorUsuario.contexto === 'viewer'">
+        <input type="text" class="usuario-livre categoria-livre"
+               placeholder="Novo usuário…"
+               aria-label="Novo usuário (Enter confirma, Esc cancela)"
+               x-model="editorUsuario.valor"
+               @keydown.enter.prevent="confirmarUsuario()"
+               @keydown.escape.prevent="fecharEditorUsuario()"
+               @mousedown.outside="fecharEditorUsuario()">
+      </template>
       <button class="btn-excluir" id="btn-excluir-fatura" @click="deletarFatura(fatura && fatura.id)">Excluir fatura</button>
     </div>
 
@@ -534,6 +582,16 @@
 <div id="cmdk-overlay" class="cmdk-overlay" style="display:none;"
      x-show="cmdkAberto" @mousedown.self="fecharCmdk()">
   <div class="cmdk-dialog" role="dialog" aria-modal="true" aria-label="Selecionar fatura">
+    <!-- FRONT 3: linha de chips de usuário ACIMA do input de busca,
+         reaproveitando o padrão visual .vista-toggle/.vt-btn -->
+    <div class="vista-toggle" role="group" aria-label="Filtrar por usuário">
+      <button class="vt-btn" :class="{ 'ativo': usuarioFiltro === '' }"
+              @click="usuarioFiltro = ''">Todos</button>
+      <template x-for="u in usuarios" :key="u">
+        <button class="vt-btn" :class="{ 'ativo': usuarioFiltro === u }"
+                @click="usuarioFiltro = u" x-text="u"></button>
+      </template>
+    </div>
     <input id="cmdk-input" type="text" placeholder="Buscar por banco, data, valor..." autocomplete="off"
            x-model="cmdkBusca" @input="aoDigitarCmdk()"
            @keydown.arrow-down.prevent="moverCmdk(1)"
@@ -547,6 +605,7 @@
           <div class="cmdk-mes" x-show="f.novoMes" x-text="f.mesLabel"></div>
           <div class="cmdk-item" :class="{ 'cmdk-ativo': i === cmdkAtivo }" @click="selecionarCmdk(f.id)">
             <span x-text="f.resumo"></span>
+            <span class="cmdk-tag" x-show="f.usuario" x-text="f.usuario"></span>
             <span class="delete-x" @click.stop="deletarFaturaCmdk(f.id)">×</span>
           </div>
         </div>

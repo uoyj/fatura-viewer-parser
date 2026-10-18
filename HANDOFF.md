@@ -55,7 +55,8 @@ fatura-viewer/
 │   ├── uploads/                 # PDFs enviados via API
 │   ├── categorias.json          # Regras de categorização (seed → arquivo)
 │   ├── overrides.json           # Overrides manuais por descrição normalizada
-│   └── recorrentes.json         # Flag de gastos recorrentes
+│   ├── recorrentes.json         # Flag de gastos recorrentes
+│   └── usuarios.json            # Lista de nomes (tag por fatura; seed vazio [] → arquivo)
 │
 ├── in/                          # PDFs de entrada para testes (gitignored)
 │   ├── Fatura.pdf               # Sofisa (fixture principal)
@@ -160,19 +161,23 @@ PDF input → extract_text() → Parser (banco/versão) → Fatura → _validate
 | GET | `/api/faturas` | Lista resumida de faturas |
 | GET | `/api/faturas/{id}` | Fatura completa (com overrides aplicados) |
 | DELETE | `/api/faturas/{id}` | Remove JSONL + PDF |
-| GET | `/api/parsers` | Lista parsers registrados |
-| POST | `/api/inferir-banco` | Sugere banco pelo PDF |
-| GET | `/api/categorias` | Regras de categorização |
-| PUT | `/api/categorias` | Substitui regras (422 se inválido) |
-| GET | `/api/overrides` | Overrides manuais globais |
-| PUT | `/api/overrides/{desc}` | Grava override por descrição normalizada |
-| DELETE | `/api/overrides/{desc}` | Remove override (404 se não existir) |
-| GET | `/api/recorrentes` | Gastos recorrentes marcados |
-| PUT | `/api/recorrentes/{desc}` | Marca como recorrente |
-| DELETE | `/api/recorrentes/{desc}` | Desmarca (404 se não estiver marcado) |
-| POST | `/api/recategorizar` | Re-aplica regras em todas as faturas |
-| GET | `/api/comparativo` | Comparação mês-a-mês + anomalias |
-| GET | `/api/consolidado` | Histórico + projeção de gastos |
+|| GET | `/api/parsers` | Lista parsers registrados |
+|| POST | `/api/inferir-banco` | Sugere banco pelo PDF |
+|| GET | `/api/categorias` | Regras de categorização |
+|| PUT | `/api/categorias` | Substitui regras (422 se inválido) |
+|| GET | `/api/overrides` | Overrides manuais globais |
+|| PUT | `/api/overrides/{desc}` | Grava override por descrição normalizada |
+|| DELETE | `/api/overrides/{desc}` | Remove override (404 se não existir) |
+|| GET | `/api/recorrentes` | Gastos recorrentes marcados |
+|| PUT | `/api/recorrentes/{desc}` | Marca como recorrente |
+|| DELETE | `/api/recorrentes/{desc}` | Desmarca (404 se não estiver marcado) |
+|| POST | `/api/recategorizar` | Re-aplica regras em todas as faturas |
+|| GET | `/api/usuarios` | Lista de nomes ordenada (data/usuarios.json) |
+|| POST | `/api/usuarios` | Cria usuário (409 se já existir, case-insensitive) |
+|| DELETE | `/api/usuarios/{nome}` | Deleta usuário + desmarca faturas (404 se inexistente) |
+|| PATCH | `/api/faturas/{id}` | Retag de usuário: `{"usuario": "nome"|null}` |
+|| GET | `/api/comparativo` | Comparação mês a mês + anomalias |
+|| GET | `/api/consolidado` | Histórico + projeção de gastos |
 
 ### SPA Fallback
 Rotas não-`/api/*` caem no `index.html` do frontend (history routing).
@@ -283,6 +288,8 @@ Cada linha é um JSON com:
   "criado_em": "ISO timestamp",
   "banco": "itau|nubank|sofisa|mercadopago",
   "modelo": "2026-09",
+  "pdf_hash": "sha256",
+  "usuario": "nome" | null,
   "payload": {
     "banco": "...",
     "modelo": "...",
@@ -306,6 +313,34 @@ Cada linha é um JSON com:
   }
 }
 ```
+**`usuario`** é um campo top-level (junto de `id`/`criado_em`/`banco`), tag opcional
+por **fatura** — registros antigos não têm o campo → `null`. O `payload` interno da
+fatura (transações, totais) NÃO carrega o campo usuario; a tag não entra na chave
+natural de dedupe (`chave_natural` em `dedupe.py`): mesma fatura re-enviada → 409,
+independentemente do usuário.
+
+### Modelo de usuários (tag por fatura)
+
+**1 usuário por FATURA** (nível fatura, não cartão). Os 3 cartões da Sofisa são do
+mesmo titular; dependentes têm faturas separadas.
+
+- `data/usuarios.json`: lista JSON de nomes (`["nome", ...]`), semeada vazia (`[]`)
+  quando ausente — **mesmo padrão de seed** de `categorias.json`. Depois, o arquivo
+  é a fonte da verdade.
+- Comparação/dedup case-**insensitive** (`strip + casefold`): `"Jhonatan"`,
+  `"  jhonatan  "` e `"JHONATAN"` são o mesmo usuário.
+- CRUD: `GET /api/usuarios` (ordenado); `POST` (409 duplicado); `DELETE` (404 se
+  inexistente e, ao deletar, zera `usuario=null` em todas as faturas com a tag);
+  `PATCH /api/faturas/{id}` para retag (`{"usuario": "nome"|null}`, 422 se o nome
+  não existir em usuarios.json, null limpa a tag).
+- **Sem auth**: a API é local (auth: sem — veja Problemas Conhecidos). A tag é
+  stateless sobre quem tem acesso.
+- **Criação inline (frontend)**: os selects de usuário (viewer-header e form de
+  upload) têm uma sentinela "＋ Novo usuário…" que abre um input inline
+  reaproveitando `.categoria-livre`. Enter confirma (POST; 409 adota o nome
+  canônico já existente). Esc / clique-fora cancela sem efeito.
+- **Sem migração**: faturas antigas sem tag aparecem apenas no filtro "Todos" do
+  frontend — não há migração automática de `null`.
 
 ## Pontos-Chave para Manutenção
 

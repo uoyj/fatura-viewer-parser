@@ -299,6 +299,9 @@ const MSG_CONVERTER_REGRA = "Converter ensino em regra? A regra passa a casar co
 
 // Sentinela do select inline: abre o editor livre e NUNCA vai ao backend.
 const SENTINELA_OUTRA = "__OUTRA__";
+// Sentinela "＋ Novo usuário…" nos selects de usuário (viewer + upload).
+// Troca o select por um <input> livre (x-if) — JAMAIS vai ao backend como usuario.
+const SENTINELA_NOVO_USUARIO = "__NOVO__";
 
 // Ícone SVG inline do badge recorrente (substitui o emoji 🔁 para consistência
 // visual entre a pílula do toggle e o badge da projeção — tupla de geometria
@@ -342,10 +345,12 @@ document.addEventListener("alpine:init", () => {
     emCursoCat: new Set(),         // ids com PUT de categoria em voo
     emCursoRec: new Set(),         // ids com PUT/DELETE de recorrente em voo
     editor: null,                  // { id, valor } — editor livre de categoria (um por vez)
+    editorUsuario: null,            // { contexto, valor, anterior } — editor livre de usuário (um por vez)
 
     // ===== Upload =====
     parsers: {},
     banco: "",
+    usuarioUpload: "",         // usuário tagueado no upload (opcional)
     arquivo: null,
     arquivoNome: PLACEHOLDER_ARQUIVO,
     bancoHint: { texto: "", tom: "" },
@@ -358,6 +363,8 @@ document.addEventListener("alpine:init", () => {
     cmdkAberto: false,
     cmdkBusca: "",
     cmdkAtivo: -1,
+    usuarioFiltro: "",        // "" = Todos; senão filtra faturas por usuario
+    usuarios: [],              // lista de nomes (GET /api/usuarios), para selects + chips
 
     // ===== Dicionário de categorias =====
     regras: [],                    // regras em edição (espelho de data/categorias.json)
@@ -470,8 +477,12 @@ document.addEventListener("alpine:init", () => {
     // ordem da lista) — é esse índice que o teclado navega.
     get cmdkVisiveis() {
       const q = (this.cmdkBusca || "").trim().toLowerCase();
+      // FRONT 3: filtro por usuário. "" = Todos (inclui sem tag); senão,
+      // f.usuario === usuarioFiltro (faturas sem tag só aparecem em "Todos").
+      const u = this.usuarioFiltro;
       const filtradas = this.faturas.filter(f =>
-        !q || formatoResumoFatura(f).toLowerCase().includes(q));
+        (!q || formatoResumoFatura(f).toLowerCase().includes(q)) &&
+        (!u || f.usuario === u));
       const porMes = {};
       filtradas.forEach(f => {
         const m = (f.fechamento || "?").slice(0, 7);
@@ -482,6 +493,7 @@ document.addEventListener("alpine:init", () => {
         porMes[mes].forEach((f, i) => out.push({
           id: f.id,
           resumo: formatoResumoFatura(f),
+          usuario: f.usuario || null,
           mesLabel: mes === "????-??" ? "Sem data" : rotuloMes(mes),
           novoMes: i === 0,
         }));
@@ -618,6 +630,7 @@ document.addEventListener("alpine:init", () => {
 
       await this.carregarRecorrentes();            // flag global: precisa antes do 1º render
       await this.carregarCategoriasConhecidas();   // rótulos (regras + overrides) p/ autocomplete
+      await this.carregarUsuarios();               // lista de nomes p/ selects + chips
       await this.carregarFaturas();
 
       this.iniciarScrollSpy();
@@ -637,6 +650,10 @@ document.addEventListener("alpine:init", () => {
     async carregarFatura(id) {
       try {
         this.fatura = await apiGET(`/api/faturas/${id}`);
+
+        // Normaliza null → "" para o x-model do select do viewer-header casar
+        // com a option "— Sem usuário" (value=""). FRONT 4 (defeito 1).
+        this.fatura.usuario = this.fatura.usuario || "";
 
         // Popular selects apenas uma vez por fatura
         this.selectsPopulados = false;
@@ -816,6 +833,11 @@ document.addEventListener("alpine:init", () => {
       const formData = new FormData();
       formData.append("arquivo", arquivo);
       formData.append("banco", banco);
+      // Usuário (opcional): só envia se setado (FRONT 2)
+      if (this.usuarioUpload && this.usuarioUpload.trim()) {
+        formData.append("usuario", this.usuarioUpload.trim());
+      }
+      this.usuarioUpload = "";   // limpa o select após envio
 
       try {
         const resp = await fetch("/api/faturas", { method: "POST", body: formData });
@@ -1157,6 +1179,154 @@ document.addEventListener("alpine:init", () => {
       } catch (e) {
         this.recorrentes = new Set();
         console.warn("Não foi possível carregar /recorrentes:", e.message);
+      }
+    },
+
+    // ===== Usuários (tag por fatura — nível fatura, não cartão) =====
+    async carregarUsuarios() {
+      try {
+        const dados = await apiGET("/api/usuarios");
+        this.usuarios = dados.usuarios || [];
+      } catch (e) {
+        this.usuarios = [];
+        console.warn("Não foi possível carregar /usuarios:", e.message);
+      }
+    },
+
+    // FRONT 4: retag de usuário via PATCH — select sempre visível no viewer-header.
+    // x-model binda fatura.usuario; "" = remover tag (PATCH com usuario=null).
+    // SENTINELA "＋ Novo usuário…" abre o editor inline em vez de PATCHar.
+    async retagUsuario(e) {
+      const fid = this.fatura && this.fatura.id;
+      const nome = e.target.value;
+      // Sentinela: NÃO envia __NOVO__ ao backend — abre editor livre
+      if (nome === SENTINELA_NOVO_USUARIO) {
+        e.target.value = this.fatura.usuario || "";   // reverte select visual
+        this.abrirEditorUsuario("viewer", this.fatura.usuario || "");
+        return;
+      }
+      if (!fid) return;
+      const anterior = this.fatura.usuario || "";
+      try {
+        const resp = await apiFetch(`/api/faturas/${fid}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ usuario: nome || null }),
+        });
+        this.fatura.usuario = (resp && resp.usuario) || "";
+        // atualiza a lista para o palette refletir a mudança
+        await this.carregarFaturas();
+      } catch (err) {
+        alert(`Não foi possível trocar o usuário: ${err.message}`);
+        // reverte o select visual para o valor anterior
+        e.target.value = anterior;
+      }
+    },
+
+    // ===== Editor livre de usuário (sentinela "＋ Novo usuário…") =====
+    // O select dá lugar a <input class="usuario-livre categoria-livre"> (x-if),
+    // reaproveitando o estilo canônico do editor de categoria.
+    // editorUsuario = { contexto: "viewer"|"upload", valor, anterior }
+    abrirEditorUsuario(contexto, anterior) {
+      this.fecharEditorUsuario();   // só um editor por vez
+      this.editorUsuario = { contexto, valor: "", anterior };
+      this.$nextTick(() => {
+        const el = document.querySelector("input.usuario-livre");
+        if (el) el.focus();
+      });
+    },
+
+    // Fecha SEM efeito: o select volta reconstructado do estado (anterior)
+    fecharEditorUsuario() {
+      if (!this.editorUsuario) return;
+      const ctx = this.editorUsuario.contexto;
+      const antes = this.editorUsuario.anterior;
+      this.editorUsuario = null;
+      if (ctx === "viewer") {
+        // x-model reflete fatura.usuario direto; garante o valor anterior
+        if (this.fatura) this.fatura.usuario = antes;
+      } else if (ctx === "upload") {
+        this.usuarioUpload = antes;
+      }
+    },
+
+    // Handler @change do select de upload: sem x-model (como a célula de categoria).
+    // - SENTINELA → abre editor inline + reverte select;
+    // - valor normal → atualiza usuarioUpload diretamente.
+    usuarioUploadSentinela(e) {
+      const sel = e.target;
+      if (sel.value === SENTINELA_NOVO_USUARIO) {
+        sel.value = this.usuarioUpload || "";   // reverte visual
+        this.abrirEditorUsuario("upload", this.usuarioUpload || "");
+        return;
+      }
+      this.usuarioUpload = (sel.value || "").trim();
+    },
+
+    // Enter no editor → POST /api/usuarios {nome}. 409 → adota nome canônico.
+    // Sucesso → recarrega this.usuarios (fonte da verdade) e, por contexto:
+    //   viewer → PATCH /api/faturas/{id} (retagUsuario via PATCH reusa a rota)
+    //   upload → usuarioUpload = nomeCanonico
+    async confirmarUsuario() {
+      if (!this.editorUsuario) return;
+      const texto = (this.editorUsuario.valor || "").trim();
+      if (!texto) return;   // Enter vazio: sem efeito
+
+      let nomeCanonico;
+      let foi409 = false;
+      try {
+        const resp = await apiPOST("/api/usuarios", { nome: texto });
+        nomeCanonico = (resp && (resp.nome || resp.usuario)) || texto;
+      } catch (err) {
+        // 409 vem como 409 (apiPOST já lança) — NÃO é erro: adota nome canônico.
+        const status = err.message.match(/(\d+)/)?.[1];
+        if (status === "409") {
+          foi409 = true;
+        } else {
+          // Erro de rede/500: mantém o editor ABERTO com o texto digitado
+          alert(`Não foi possível criar o usuário: ${err.message}`);
+          this.$nextTick(() => {
+            const el = document.querySelector("input.usuario-livre");
+            if (el) el.focus();
+          });
+          return;
+        }
+      }
+
+      // Fonte da verdade: recarrega a lista — os chips do palette atualizam sozinhos
+      await this.carregarUsuarios();
+
+      // Em 409, resolve o nome CANÔNICO já cadastrado (case-insensitive), para a
+      // lista NÃO duplicar ("jhonatan" quando "Jhonatan" existe).
+      if (foi409) {
+        const norm = (texto).trim().toLowerCase();
+        nomeCanonico = (this.usuarios.find(u => u.toLowerCase() === norm)) || texto;
+      }
+
+      const ctx = this.editorUsuario.contexto;
+      const antes = this.editorUsuario.anterior;
+      this.editorUsuario = null;   // fecha editor ANTES do PATCH (retagUsuario espera o select)
+
+      if (ctx === "viewer") {
+        // Reaplica a tag na fatura via PATCH (mesmo caminho de retagUsuario).
+        // O select já voltou para `antes`; forçamos a exibição via estado.
+        if (this.fatura && this.fatura.id) {
+          const fid = this.fatura.id;
+          try {
+            const resp = await apiFetch(`/api/faturas/${fid}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ usuario: nomeCanonico }),
+            });
+            this.fatura.usuario = (resp && resp.usuario) ? resp.usuario : "";
+            await this.carregarFaturas();   // palette reflete a tag
+          } catch (err) {
+            alert(`Não foi possível atribuir o usuário à fatura: ${err.message}`);
+            this.fatura.usuario = antes;     // reverte visual
+          }
+        }
+      } else if (ctx === "upload") {
+        this.usuarioUpload = nomeCanonico;
       }
     },
 

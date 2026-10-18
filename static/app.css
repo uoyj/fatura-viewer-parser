@@ -524,6 +524,36 @@ select.badge-categoria.aprendido {
   outline-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.15);
 }
+/* ===== BADGE DE USUÁRIO (tag por fatura — nível fatura, não cartão) ===== */
+.badge-usuario {
+  background: rgba(132, 204, 255, 0.12);
+  color: var(--blue);
+  border: 1px solid rgba(132, 204, 255, 0.4);
+}
+.badge-usuario-select {
+  font-family: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: 10px;
+  padding: 1px 6px;
+  background: var(--bg);
+  color: var(--blue);
+  border-color: rgba(132, 204, 255, 0.4);
+  vertical-align: middle;
+  cursor: pointer;
+}
+.badge-usuario-select option { background: var(--bg); color: var(--text); }
+/* Tag discreta ao lado do resumo no command palette */
+.cmdk-tag {
+  background: rgba(132, 204, 255, 0.12);
+  color: var(--blue);
+  border: 1px solid rgba(132, 204, 255, 0.4);
+  border-radius: 8px;
+  padding: 1px 6px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  margin-left: 6px;
+}
 /* Editor livre da categoria (sentinela "＋ Outra categoria…"): <input> + datalist
    na MESMA célula, com a caixa do select inline — sem componente customizado. */
 input.categoria-livre {
