@@ -112,6 +112,36 @@ def _encontrar_registro(fatura_id: str) -> dict | None:
     return None
 
 
+def _propagar_override(chave: str, categoria: str) -> int:
+    """Grava a categoria nova nas transações cuja descrição normalizada bate a
+    chave, em TODAS as faturas persistidas (data/faturas.jsonl).
+
+    Fonte do /api/consolidado e /api/comparativo — atualiza o JSONL sem precisar
+    de POST /recategorizar. Não reaplica regras: o override tem prioridade
+    máxima no `categorizar()`, logo reescrever a categoria direto é idempotente
+    com um futuro /recategorizar. Retorna o número de registros (faturas)
+    alterados. Usa sempre _salvar_registros (escrita atômica).
+    """
+    afetadas = 0
+    regs = _carregar_registros()
+    for reg in regs:
+        payload = reg.get("payload")
+        if not isinstance(payload, dict):
+            continue
+        mudou = False
+        for t in payload.get("transacoes") or []:
+            if normalizar_descricao(t.get("descricao", "")) == chave \
+               and t.get("categoria") != categoria:
+                t["categoria"] = categoria
+                mudou = True
+        if mudou:
+            reg["payload"] = payload
+            afetadas += 1
+    if afetadas:
+        _salvar_registros(regs)
+    return afetadas
+
+
 # ---------------------------------------------------------------------------
 # Usuários (tags por fatura — nível fatura, não cartão)
 # ---------------------------------------------------------------------------
@@ -526,7 +556,9 @@ async def put_override(descricao: str, request: Request):
     overrides[chave] = categoria.strip()
     salvar_overrides(overrides, OVERRIDES_PATH)
 
-    return {"chave": chave, "categoria": overrides[chave]}
+    # Propaga para as faturas persistidas — fonte do /consolidado e /comparativo
+    afetadas = _propagar_override(chave, overrides[chave])
+    return {"chave": chave, "categoria": overrides[chave], "faturas_afetadas": afetadas}
 
 
 @app.delete("/api/overrides/{descricao}")

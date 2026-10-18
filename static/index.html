@@ -434,6 +434,19 @@
     <div id="lista-overrides">
       <div class="overrides-vazio" x-show="!chavesOverrides.length && !overridesErro">Nenhum ensinamento manual ainda.</div>
       <div class="overrides-vazio" x-show="overridesErro" x-text="overridesErro ? `Erro ao carregar: ${overridesErro}` : ''"></div>
+
+      <!-- Promoção em lote: um botão por categoria de ensino -->
+      <div class="dic-grupos" x-show="overridesAgrupados.length">
+        <template x-for="grupo in overridesAgrupados" :key="grupo.categoria">
+          <div class="dic-grupo-linha">
+            <span><strong x-text="grupo.categoria"></strong>
+              — <span x-text="grupo.chaves.length"></span> ensino(s)</span>
+            <button type="button" class="btn-converter-regra"
+                    @click="converterGrupoEmRegra(grupo.categoria)">↑ regra (todas)</button>
+          </div>
+        </template>
+      </div>
+
       <table class="dic-tabela" x-show="chavesOverrides.length">
         <thead><tr><th>Descrição</th><th>Categoria</th><th style="width:132px"></th></tr></thead>
         <tbody>

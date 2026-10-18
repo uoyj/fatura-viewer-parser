@@ -8,13 +8,15 @@ do assert nomeando o caso que falhou — isso mantém a contagem de testes baixa
 sem perder nenhum caso.
 
 Cobre:
-- normalizar_descricao (upper/strip/colapso de espaços)
-- seed: data/categorias.json criado UMA vez; depois o arquivo é a fonte da verdade
-- precedência: override manual global > regras > "Outros"
-- API: GET/PUT /categorias, GET/PUT/DELETE /overrides, POST /recategorizar
-- API: GET/PUT/DELETE /recorrentes (flag global de gasto recorrente), incluindo
-  a independência em relação a overrides/categorias e o fato de a flag NÃO ser
-  injetada no payload das transações
+|- normalizar_descricao (upper/strip/colapso de espaços)
+|- seed: data/categorias.json criado UMA vez; depois o arquivo é a fonte da verdade
+|- precedência: override manual global > regras > "Outros"
+|- API: GET/PUT /categorias, GET/PUT/DELETE /overrides, POST /recategorizar
+|- API: GET/PUT/DELETE /recorrentes (flag global de gasto recorrente), incluindo
+|  a independência em relação a overrides/categorias e o fato de a flag NÃO ser
+|  injetada no payload das transações
+|- PUT /overrides propaga categoria para faturas salvas (consolidado/comparativo)
+|  automaticamente; idempotência e ausência de regressão no PATCH /faturas
 
 ISOLAMENTO OBRIGATÓRIO: nenhum teste toca o data/ real do usuário.
 O fixture `isolado` monkeypatcha categorias.json, overrides.json,
@@ -27,6 +29,7 @@ from __future__ import annotations
 import json
 from datetime import date
 from decimal import Decimal
+from urllib.parse import quote
 
 import pytest
 from fastapi.testclient import TestClient
@@ -44,7 +47,7 @@ from categorizer import (
     normalizar_descricao,
     salvar_overrides,
 )
-from schemas import Fatura, Transacao
+from schemas import Fatura, Transacao, fatura_para_dict
 
 
 # ---------------------------------------------------------------------------
@@ -346,7 +349,7 @@ def test_api_overrides_crud(client, isolado):
     """
     resp = client.put("/api/overrides/AmazonMktplc*LHComProd", json={"categoria": "Compras online"})
     assert resp.status_code == 200
-    assert resp.json() == {"chave": "AMAZONMKTPLC*LHCOMPROD", "categoria": "Compras online"}
+    assert resp.json() == {"chave": "AMAZONMKTPLC*LHCOMPROD", "categoria": "Compras online", "faturas_afetadas": 0}
     assert client.get("/api/overrides").json() == {"AMAZONMKTPLC*LHCOMPROD": "Compras online"}
     assert json.loads((isolado / "overrides.json").read_text(encoding="utf-8")) == {
         "AMAZONMKTPLC*LHCOMPROD": "Compras online"}
@@ -555,3 +558,134 @@ def test_ids_preenchidos_por_indice(client, isolado):
     from schemas import fatura_para_dict
     d = fatura_para_dict(_fatura(["A", "B", "C"]))
     assert [t["id"] for t in d["transacoes"]] == [0, 1, 2]
+
+
+# ---------------------------------------------------------------------------
+# 7. Propagação automática no PUT override
+# ---------------------------------------------------------------------------
+
+def _jsonl_transacoes(isolado, descricao):
+    """Lê o jsonl e devolve a lista de categorias das transacoes com a descricao
+    procurada (acessa o disco direto — confirma o que foi persistido)."""
+    linhas = (isolado / "faturas.jsonl").read_text(encoding="utf-8").strip().splitlines()
+    cats = []
+    for linha in linhas:
+        reg = json.loads(linha)
+        for t in reg.get("payload", {}).get("transacoes") or []:
+            if t.get("descricao") == descricao:
+                cats.append(t.get("categoria"))
+    return cats
+
+
+def test_put_override_propaga_para_faturas_salvas(client, isolado):
+    """
+    PUT /api/overrides/{descricao} propaga a categoria para TODAS as faturas
+    persistidas no jsonl — o /consolidado e /comparativo refletem na hora, sem
+    precisar de POST /recategorizar.
+
+    Fluxo: upload fatura (categoria "Outros") -> PUT override -> consolidado
+    e comparativo mostram a categoria nova em vez de "Outros".
+    """
+    DESCRICAO = "PADARIA XYZ"
+    # grava uma fatura com a descrição normalizada como override
+    _gravar_jsonl(isolado / "faturas.jsonl", [_payload([
+        _transacao(DESCRICAO, categoria="Outros"),
+    ])])
+    # chave normalizada = descrição em upper
+    chave = normalizar_descricao(DESCRICAO)
+
+    # antes do override: consolidado mostra "Outros"
+    cons_antes = client.get("/api/consolidado").json()
+    assert cons_antes["por_categoria"].get("Outros", {}).get("2026-09") == "10.00"
+
+    resp = client.put(f"/api/overrides/{quote(DESCRICAO, safe='')}",
+                      json={"categoria": "Alimentação"})
+    assert resp.status_code == 200
+    assert resp.json()["chave"] == chave
+    assert resp.json()["categoria"] == "Alimentação"
+    assert resp.json()["faturas_afetadas"] == 1
+
+    # jsonl gravado diretamente reflete a nova categoria (propagação em disco)
+    assert _jsonl_transacoes(isolado, DESCRICAO) == ["Alimentação"]
+
+    # /consolidado e /comparativo leem o jsonl -> categoria nova aparece
+    cons = client.get("/api/consolidado").json()
+    assert "Alimentação" in cons["por_categoria"]
+    assert cons["por_categoria"]["Alimentação"].get("2026-09") == "10.00"
+    assert cons["por_categoria"].get("Outros", {}).get("2026-09") != "10.00"
+
+    comp = client.get("/api/comparativo").json()
+    assert "Alimentação" in comp["por_categoria"]
+
+
+def test_put_override_idempotente(client, isolado):
+    """
+    Repetir o mesmo PUT (mesma categoria) é idempotente: faturas_afetadas=0
+    na segunda chamada e o jsonl não muda.
+    """
+    DESCRICAO = "PADARIA XYZ"
+    _gravar_jsonl(isolado / "faturas.jsonl", [_payload([
+        _transacao(DESCRICAO, categoria="Outros"),
+    ])])
+
+    r1 = client.put(f"/api/overrides/{quote(DESCRICAO, safe='')}",
+                    json={"categoria": "Alimentação"})
+    assert r1.json()["faturas_afetadas"] == 1
+
+    antes = (isolado / "faturas.jsonl").read_bytes()
+    # segunda chamada: categoria já é "Alimentação" -> nada a mudar
+    r2 = client.put(f"/api/overrides/{quote(DESCRICAO, safe='')}",
+                    json={"categoria": "Alimentação"})
+    assert r2.status_code == 200
+    assert r2.json()["faturas_afetadas"] == 0
+    assert (isolado / "faturas.jsonl").read_bytes() == antes
+
+
+def test_put_override_nao_regressa_patch_fatura(client, isolado):
+    """
+    Não regressão: PATCH /api/faturas/{id} (retag de usuário) continua funcionando
+    independentemente da propagação de overrides.
+    """
+    f = _fatura(["PADARIA XYZ"])
+    payload = fatura_para_dict(f)
+    _gravar_jsonl(isolado / "faturas.jsonl", [payload])
+
+    # cria um usuário para poder taguear
+    client.post("/api/usuarios", json={"nome": "jhonatan"})
+
+    resp = client.patch("/api/faturas/fat-0", json={"usuario": "jhonatan"})
+    assert resp.status_code == 200
+    assert resp.json()["usuario"] == "Jhonatan"  # API normaliza para a grafia canônica cadastrada
+
+    # o usuario foi persistido no jsonl (grafia canônica, não o que foi enviado)
+    reg = json.loads((isolado / "faturas.jsonl").read_text(encoding="utf-8").strip().splitlines()[0])
+    assert reg["usuario"] == "Jhonatan"
+
+    # agora ensina categoria — a tag de usuário não deve ser apagada
+    client.put(f"/api/overrides/{quote('PADARIA XYZ', safe='')}",
+               json={"categoria": "Alimentação"})
+    reg2 = json.loads((isolado / "faturas.jsonl").read_text(encoding="utf-8").strip().splitlines()[0])
+    assert reg2["usuario"] == "Jhonatan"
+    assert reg2["payload"]["transacoes"][0]["categoria"] == "Alimentação"
+
+
+def test_delete_override_nao_reforica_propagacao(client, isolado):
+    """
+    DELETE do override volta à categoria original em faturas já salvas
+    (o jsonl mantém o parse original, não o override).
+    """
+    DESCRICAO = "PADARIA XYZ"
+    _gravar_jsonl(isolado / "faturas.jsonl", [_payload([
+        _transacao(DESCRICAO, categoria="Outros"),
+    ])])
+
+    client.put(f"/api/overrides/{quote(DESCRICAO, safe='')}",
+               json={"categoria": "Alimentação"})
+    assert _jsonl_transacoes(isolado, DESCRICAO) == ["Alimentação"]
+
+    # DELETE remove o override
+    assert client.delete(f"/api/overrides/{quote(DESCRICAO, safe='')}").status_code == 200
+    # o jsonl mantém o que foi propagado (não faz rollback) — comportamento aceito
+    # pelo HANDOFF: remover ensino não desfaz categoria gravada em faturas salvas.
+    assert _jsonl_transacoes(isolado, DESCRICAO) == ["Alimentação"]
+    assert client.get("/api/overrides").json() == {}

@@ -146,6 +146,13 @@ function normalizarDescricao(s) {
     .toUpperCase();
 }
 
+// Comparador de rótulos de categoria: mesmo tratamento das descrições
+// (upper + colapso de espaços + trim) — evita "Farmacia" e "Farmácia" em blocos
+// distintos ao fazer merge de ensinos na mesma categoria.
+function normCat(s) {
+  return normalizarDescricao(String(s || ""));
+}
+
 // Normaliza nome de usuário para comparação/dedup: trim + toLowerCase.
 // Espelha _normalizar_usuario do backend (strip + casefold). JS não tem
 // casefold; toLowerCase é equivalente para nomes latin1/acentuados nesse caso.
@@ -1643,8 +1650,18 @@ document.addEventListener("alpine:init", () => {
       if (!confirm(MSG_CONVERTER_REGRA)) return;
 
       const categoria = this.overrides[chave] || "";
-      this.regras.push(novaRegra(categoria, [chave]));
-      this.$nextTick(() => this.focarUltimoBlocoRegra());
+      const alvo = this.regras.find(r => normCat(r.categoria) === normCat(categoria));
+      if (alvo) {
+        // MERGE: adiciona o padrão ao bloco existente, sem duplicar
+        const padroes = alvo._texto.split("\n").map(s => s.trim()).filter(Boolean);
+        if (!padroes.includes(chave)) {
+          padroes.push(chave);
+          alvo._texto = padroes.join("\n");
+        }
+      } else {
+        this.regras.push(novaRegra(categoria, [chave]));
+        this.$nextTick(() => this.focarUltimoBlocoRegra());
+      }
 
       try {
         await apiDELETE(`/api/overrides/${encodeURIComponent(chave)}`);
@@ -1655,6 +1672,44 @@ document.addEventListener("alpine:init", () => {
           `Bloco de regra criado, mas não foi possível remover o ensino: ${e.message}`, "erro");
       }
       await this.carregarOverridesDic();   // recarrega a lista (o ensino já não deve estar lá)
+    },
+
+    // --- Grupos de ensinos por categoria (para promoção em lote) ---
+    get overridesAgrupados() {
+      const g = {};
+      for (const [chave, cat] of Object.entries(this.overrides || {}))
+        (g[cat] = g[cat] || []).push(chave);
+      return Object.entries(g)
+        .map(([categoria, chaves]) => ({ categoria, chaves: chaves.sort() }))
+        .sort((a, b) => a.categoria.localeCompare(b.categoria));
+    },
+
+    // --- "↑ regra (todas)": promove TODOS os ensinos de uma categoria ---
+    async converterGrupoEmRegra(categoria) {
+      const grupo = (this.overridesAgrupados || []).find(x => x.categoria === categoria);
+      if (!grupo) return;
+      if (!confirm(`Converter ${grupo.chaves.length} ensinamento(s) de "${categoria}" em regra?`)) return;
+
+      let alvo = this.regras.find(r => normCat(r.categoria) === normCat(categoria));
+      for (const chave of grupo.chaves) {
+        if (!alvo) {
+          this.regras.push(novaRegra(categoria, [chave]));
+          alvo = this.regras[this.regras.length - 1];
+        } else {
+          const p = alvo._texto.split("\n").map(s => s.trim()).filter(Boolean);
+          if (!p.includes(chave)) { p.push(chave); alvo._texto = p.join("\n"); }
+        }
+      }
+      for (const chave of grupo.chaves) {
+        try {
+          await apiDELETE(`/api/overrides/${encodeURIComponent(chave)}`);
+        } catch (e) {
+          this.mostrarMsgDic("msgOverrides", `Falha removendo "${chave}": ${e.message}`, "erro");
+        }
+      }
+      await this.carregarOverridesDic();
+      this.mostrarMsgDic("msgOverrides",
+        `${grupo.chaves.length} ensino(s) de "${categoria}" promovidos. Revise o bloco e clique em "Salvar regras".`, "ok");
     },
 
     // --- Aplicar global ---
