@@ -34,6 +34,10 @@ const COLUNAS = [
   {key:"valor", label:"Valor"},
 ];
 
+// Colunas ordenáveis da tabela (fonte única — era uma whitelist duplicada
+// em classeTh() e ordenarPor(); manter as duas leituras apontando aqui).
+const ORDENAVEIS = ["data", "parcela", "valor"];
+
 // ===== Utils =====
 function formatarMoeda(v) {
   if (v === null || v === undefined || v === "") return "—";
@@ -347,7 +351,7 @@ document.addEventListener("alpine:init", () => {
     busca: "",
     filtroCategoria: "",
     filtroCartao: "",
-    sort: { key: "data", dir: "asc" },
+    sort: { key: "data", dir: "desc" },
     selectsPopulados: false,     // controle: popular selects só uma vez por fatura
     categoriasFiltro: [],        // snapshot por fatura (fora de escopo do autocomplete)
     cartoesFiltro: [],
@@ -427,6 +431,19 @@ document.addEventListener("alpine:init", () => {
     get linhasOrdenadas() {
       const { key, dir } = this.sort;
       return [...this.linhas].sort((a, b) => {
+        if (key === "parcela") {
+          // Ordenação por parcela: itens COM parcela (parcela_total preenchido)
+          // vêm primeiro, independentemente de dir; o dir só afeta o desempate
+          // (total desc, depois parcela_atual asc). Sem parcela: NaN-safe.
+          const ap = a.parcela_total ? 1 : 0, bp = b.parcela_total ? 1 : 0;
+          if (ap !== bp) return bp - ap;
+          // desempate: mais parcelas totais primeiro, depois parcela atual
+          const at = parseInt(a.parcela_total) || 0, bt = parseInt(b.parcela_total) || 0;
+          if (at !== bt) return bt - at;
+          const aa = parseInt(a.parcela_atual) || 0, ba = parseInt(b.parcela_atual) || 0;
+          if (aa !== ba) return aa - ba;
+          return 0;
+        }
         let av = a[key], bv = b[key];
         if (key === "valor") { av = parseFloat(av); bv = parseFloat(bv); }
         if (key === "data") { av = av || ""; bv = bv || ""; }
@@ -620,19 +637,19 @@ document.addEventListener("alpine:init", () => {
       this._tAprend = setTimeout(() => { this.aprendizadoFlash = null; }, 850);
     },
 
-    // Cabeçalho ordenável (só Data e Valor), com a seta do CSS
+    // Cabeçalho ordenável, com a seta do CSS. ORDENAVEIS é a fonte única.
     classeTh(c) {
-      const sortable = (c.key === "data" || c.key === "valor") ? "sortable" : "";
+      const sortable = ORDENAVEIS.includes(c.key) ? "sortable" : "";
       const sorted = c.key === this.sort.key ? `sorted-${this.sort.dir}` : "";
       return `${sortable} ${sorted}`;
     },
     ordenarPor(key) {
-      if (key !== "data" && key !== "valor") return;   // só essas colunas são ordenáveis
+      if (!ORDENAVEIS.includes(key)) return;
       if (this.sort.key === key) {
         this.sort.dir = this.sort.dir === 'asc' ? 'desc' : 'asc';
       } else {
         this.sort.key = key;
-        this.sort.dir = 'asc';
+        this.sort.dir = 'desc';   // primeira ordenação em uma coluna vem desc
       }
     },
 

@@ -463,6 +463,10 @@ th.sortable { cursor: pointer; }
 th.sortable:hover { color: var(--accent); }
 th.sortable.sorted-asc::after { content: " ▲"; color: var(--accent); }
 th.sortable.sorted-desc::after { content: " ▼"; color: var(--accent); }
+/* Indicador de ordenação disponível: coluna ordenável que não é a ativa.
+   Opaco pra não competir com a seta ativa (▲/▼) nem com o cabeçalho. */
+th.sortable:not(.sorted-asc):not(.sorted-desc)::after { content: " ⇅"; opacity: .35; }
+th.sortable:not(.sorted-asc):not(.sorted-desc):hover::after { opacity: .8; }
 td {
   padding: 10px 12px;
   border-bottom: 1px solid var(--border);
