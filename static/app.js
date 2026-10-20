@@ -1622,18 +1622,20 @@ document.addEventListener("alpine:init", () => {
     removerRegra(idx) {
       this.regras.splice(idx, 1);
     },
-
     async salvarRegrasDic() {
       const regras = this.validarRegrasTela();
-      if (!regras) return;   // inválido -> NAO envia
+      if (!regras) return false;   // inválido -> NAO envia
+
       try {
         const resp = await apiPUT("/api/categorias", { regras });
         const salvas = resp && resp.regras ? resp.regras : regras;
         this.regras = salvas.map(r => novaRegra(r.categoria, [...r.padroes]));
         this.registrarCategorias(this.regras.map(r => r.categoria));   // regras salvas viram rótulos conhecidos
         this.mostrarMsgDic("msgRegras", `Regras salvas (${this.regras.length}).`, "ok");
+        return true;
       } catch (e) {
         this.mostrarMsgDic("msgRegras", e.message, "erro");   // 422 -> campo "erro" do JSON
+        return false;
       }
     },
 
@@ -1658,37 +1660,44 @@ document.addEventListener("alpine:init", () => {
       await this.carregarOverridesDic();   // recarrega a lista
     },
 
+    // ===== Ensino → regra: núcleo compartilhado =====
+    // Mescla a chave no bloco da categoria (cria o bloco se não existir),
+    // sem duplicar padrão. Usado por individuais, grupo e "todos".
+    mesclarPadraoEmRegra(categoria, chave) {
+      const idx = this.regras.findIndex(r => normCat(r.categoria) === normCat(categoria));
+      if (idx === -1) {
+        this.regras.push(novaRegra(categoria, [chave]));
+        return;
+      }
+      const alvo = this.regras[idx];
+      const p = (alvo._texto || "").split("\n").map(s => s.trim()).filter(Boolean);
+      if (!p.includes(chave)) { p.push(chave); alvo._texto = p.join("\n"); }
+    },
+
     // --- "↑ regra": promove um ensinamento manual a REGRA ---------------------------
-    // Item 5 do FRONT 3. Cria a regra com categoria = categoria do override e padrão =
-    // chave normalizada, REMOVE o override e deixa o bloco EDITÁVEL na lista de regras
-    // (a persistência só acontece em "Salvar regras").
+    // Mescla no bloco da categoria (cria se não existir), SALVA na hora e remove o
+    // override. Sem depender do "Salvar regras" manual.
     async converterOverrideEmRegra(chave) {
       if (!(chave in this.overrides)) return;
       if (!confirm(MSG_CONVERTER_REGRA)) return;
 
-      const categoria = this.overrides[chave] || "";
-      const alvo = this.regras.find(r => normCat(r.categoria) === normCat(categoria));
-      if (alvo) {
-        // MERGE: adiciona o padrão ao bloco existente, sem duplicar
-        const padroes = alvo._texto.split("\n").map(s => s.trim()).filter(Boolean);
-        if (!padroes.includes(chave)) {
-          padroes.push(chave);
-          alvo._texto = padroes.join("\n");
-        }
-      } else {
-        this.regras.push(novaRegra(categoria, [chave]));
-        this.$nextTick(() => this.focarUltimoBlocoRegra());
+      const categoria = (this.overrides[chave] || "").trim();
+      if (!categoria) {
+        this.mostrarMsgDic("msgOverrides", "Ensino sem categoria — impossível promover.", "erro");
+        return;
       }
 
+      this.mesclarPadraoEmRegra(categoria, chave);
+      if (!await this.salvarRegrasDic()) return;   // falhou (ex.: bloco inválido na tela)
       try {
         await apiDELETE(`/api/overrides/${encodeURIComponent(chave)}`);
         this.mostrarMsgDic("msgOverrides",
-          `Ensino convertido em regra: "${chave}" → ${categoria || "(sem categoria)"}. Revise o bloco de regras e clique em “Salvar regras”.`, "ok");
+          `Ensino promovido: "${chave}" → regra "${categoria}" (já salva).`, "ok");
       } catch (e) {
         this.mostrarMsgDic("msgOverrides",
-          `Bloco de regra criado, mas não foi possível remover o ensino: ${e.message}`, "erro");
+          `Regra salva, mas falhou ao remover o ensino: ${e.message}`, "erro");
       }
-      await this.carregarOverridesDic();   // recarrega a lista (o ensino já não deve estar lá)
+      await this.carregarOverridesDic();
     },
 
     // --- Grupos de ensinos por categoria (para promoção em lote) ---
@@ -1703,20 +1712,13 @@ document.addEventListener("alpine:init", () => {
 
     // --- "↑ regra (todas)": promove TODOS os ensinos de uma categoria ---
     async converterGrupoEmRegra(categoria) {
-      const grupo = (this.overridesAgrupados || []).find(x => x.categoria === categoria);
+      const grupo = (this.overridesAgrupados || [])
+        .find(x => normCat(x.categoria) === normCat(categoria));
       if (!grupo) return;
-      if (!confirm(`Converter ${grupo.chaves.length} ensinamento(s) de "${categoria}" em regra?`)) return;
+      if (!confirm(`Converter ${grupo.chaves.length} ensinamento(s) de "${grupo.categoria}" em regra?`)) return;
 
-      let alvo = this.regras.find(r => normCat(r.categoria) === normCat(categoria));
-      for (const chave of grupo.chaves) {
-        if (!alvo) {
-          this.regras.push(novaRegra(categoria, [chave]));
-          alvo = this.regras[this.regras.length - 1];
-        } else {
-          const p = alvo._texto.split("\n").map(s => s.trim()).filter(Boolean);
-          if (!p.includes(chave)) { p.push(chave); alvo._texto = p.join("\n"); }
-        }
-      }
+      grupo.chaves.forEach(chave => this.mesclarPadraoEmRegra(grupo.categoria, chave));
+      if (!await this.salvarRegrasDic()) return;
       for (const chave of grupo.chaves) {
         try {
           await apiDELETE(`/api/overrides/${encodeURIComponent(chave)}`);
@@ -1726,7 +1728,29 @@ document.addEventListener("alpine:init", () => {
       }
       await this.carregarOverridesDic();
       this.mostrarMsgDic("msgOverrides",
-        `${grupo.chaves.length} ensino(s) de "${categoria}" promovidos. Revise o bloco e clique em "Salvar regras".`, "ok");
+        `${grupo.chaves.length} ensino(s) de "${grupo.categoria}" promovidos — regra salva.`, "ok");
+    },
+
+    // --- "↑ regra (TUDO)": promove TODOS os ensinos de TODAS as categorias ---
+    async converterTodosEmRegras() {
+      const grupos = this.overridesAgrupados || [];
+      const total = grupos.reduce((n, g) => n + g.chaves.length, 0);
+      if (!total) { this.mostrarMsgDic("msgOverrides", "Não há ensinos para promover.", "ok"); return; }
+      if (!confirm(`Promover TODOS os ${total} ensinos (${grupos.length} categoria(s)) a regras?`)) return;
+
+      grupos.forEach(g => g.chaves.forEach(chave => this.mesclarPadraoEmRegra(g.categoria, chave)));
+      if (!await this.salvarRegrasDic()) return;
+      for (const g of grupos) {
+        for (const chave of g.chaves) {
+          try {
+            await apiDELETE(`/api/overrides/${encodeURIComponent(chave)}`);
+          } catch (e) {
+            this.mostrarMsgDic("msgOverrides", `Falha removendo "${chave}": ${e.message}`, "erro");
+          }
+        }
+      }
+      await this.carregarOverridesDic();
+      this.mostrarMsgDic("msgOverrides", `${total} ensino(s) promovidos a regras e salvos.`, "ok");
     },
 
     // --- Aplicar global ---

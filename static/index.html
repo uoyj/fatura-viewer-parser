@@ -437,6 +437,10 @@
 
       <!-- Promoção em lote: um botão por categoria de ensino -->
       <div class="dic-grupos" x-show="overridesAgrupados.length">
+        <button type="button" class="btn-converter-regra"
+                @click="converterTodosEmRegras()"
+                x-show="overridesAgrupados.length"
+                x-text="`↑ Promover TODOS os ensinos (${Object.keys(overrides).length})`">↑ Promover TODOS os ensinos</button>
         <template x-for="grupo in overridesAgrupados" :key="grupo.categoria">
           <div class="dic-grupo-linha">
             <span><strong x-text="grupo.categoria"></strong>
