@@ -575,7 +575,7 @@
       <h3>Mês:
         <!-- Mês mais recente como padrão (definido ao carregar o /consolidado) -->
         <select id="cons-mes-sel" class="input-select" style="display:inline-block;width:auto;padding:4px 8px;font-size:0.85rem;"
-                x-model="consMes" @change="atribuirCoresConsolidado()">
+                x-model="consMes" @change="atribuirCoresConsolidado(); renderConsProj(cons)">
           <template x-for="m in mesesCons" :key="m">
             <option :value="m" x-text="`${rotuloMes(m)} — ${formatarMoeda(cons.totais_mes[m])}`"></option>
           </template>

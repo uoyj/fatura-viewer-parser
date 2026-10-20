@@ -1882,9 +1882,17 @@ document.addEventListener("alpine:init", () => {
       this.blocosConsProj = [];
       this.pontosConsProj = [];
 
-      const chaves = Object.keys(c.projecao || {});
+      // Só meses APÓS o consMes selecionado — "YYYY-MM" compara lexicograficamente
+      // sem ambiguidade. renderConsProj é chamado DEPOIS de consMes ser definido
+      // em carregarConsolidado(); o guard cobre chamadas fora dessa ordem.
+      const ref = this.consMes || "";
+      const chaves = Object.keys(c.projecao || {})
+        .filter(k => !ref || k > ref)
+        .sort();
       if (!chaves.length) {
-        this.consProjMensagem = "Sem parcelas nem recorrentes pendentes.";
+        this.consProjMensagem = ref
+          ? `Nada projetado após ${rotuloMes(ref)}.`
+          : "Sem parcelas nem recorrentes pendentes.";
         return;
       }
       const maxTotal = Math.max(...chaves.map(k => parseFloat(c.projecao[k].total))) || 1;
